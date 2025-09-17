@@ -3,9 +3,9 @@ import json
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import time
-from app.config import settings
-from app.schemas.sec_data import SECCompanyFacts, SECSubmissions, SECValue
-from app.services.xbrl_parser import XBRLParser
+from config import settings
+from schemas.sec_data import SECCompanyFacts, SECSubmissions, SECValue
+from services.xbrl_parser import XBRLParser
 
 
 class SECService:

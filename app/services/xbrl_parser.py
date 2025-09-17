@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import time
-from app.config import settings
+from config import settings
 
 
 class XBRLParser:

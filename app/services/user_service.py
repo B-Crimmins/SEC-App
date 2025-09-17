@@ -1,9 +1,9 @@
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
-from app.models.user import User, UserTier
-from app.models.subscription import Subscription
-from app.auth.auth import get_password_hash, verify_password
-from app.config import settings
+from models.user import User, UserTier
+from models.subscription import Subscription
+from auth.auth import get_password_hash, verify_password
+from config import settings
 
 
 class UserService:
@@ -97,8 +97,8 @@ class UserService:
         # This is a simplified implementation
         # In production, you'd want a separate usage tracking table
         from datetime import datetime, timedelta
-        from app.models.financial_report import FinancialReport
-        from app.models.analysis import Analysis
+        from models.financial_report import FinancialReport
+        from models.analysis import Analysis
         
         # Count financial reports and analyses created this month
         start_of_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)

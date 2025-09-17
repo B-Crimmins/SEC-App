@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-from app.models.subscription import SubscriptionStatus
+from models.subscription import SubscriptionStatus
 
 
 class SubscriptionBase(BaseModel):

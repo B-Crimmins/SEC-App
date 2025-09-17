@@ -1,16 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Dict, Any, cast, List
-from app.database import get_db
-from app.auth.auth import get_current_active_user
-from app.services.openai_service import OpenAIService
-from app.services.sec_service import SECService
-from app.services.user_service import UserService
-from app.services.financial_ratios import FinancialRatioCalculator
-from app.models.user import User
-from app.models.financial_report import FinancialReport
-from app.models.analysis import Analysis
-from app.schemas.analysis import AnalysisResponse, AnalysisRequest, TrendAnalysisRequest, TrendAnalysisResponse
+from database import get_db
+from auth.auth import get_current_active_user
+from services.openai_service import OpenAIService
+from services.sec_service import SECService
+from services.user_service import UserService
+from services.financial_ratios import FinancialRatioCalculator
+from models.user import User
+from models.financial_report import FinancialReport
+from models.analysis import Analysis
+from schemas.analysis import AnalysisResponse, AnalysisRequest, TrendAnalysisRequest, TrendAnalysisResponse
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
@@ -34,11 +34,11 @@ async def generate_analysis(
         )
     
     # Check if user has access to AI analysis (paid tier)
-    if current_user.tier.value == "free":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="AI analysis is only available for paid users. Please upgrade your subscription."
-        )
+    # if current_user.tier.value == "free":
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN,
+    #         detail="AI analysis is only available for paid users. Please upgrade your subscription."
+    #     )
     
     # Get or create financial report
     sec_service = SECService()

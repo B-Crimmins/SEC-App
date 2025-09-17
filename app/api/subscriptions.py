@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
 from sqlalchemy.orm import Session
 from typing import Dict, Any, cast, Optional
-from app.database import get_db
-from app.auth.auth import get_current_active_user
-from app.services.stripe_service import StripeService
-from app.services.user_service import UserService
-from app.models.user import User, UserTier
-from app.schemas.subscription import SubscriptionCreate, SubscriptionResponse, SubscriptionCancel
+from database import get_db
+from auth.auth import get_current_active_user
+from services.stripe_service import StripeService
+from services.user_service import UserService
+from models.user import User, UserTier
+from schemas.subscription import SubscriptionCreate, SubscriptionResponse, SubscriptionCancel
 import stripe
-from app.config import settings
+from config import settings
 
 # Initialize Stripe
 if settings.STRIPE_SECRET_KEY:

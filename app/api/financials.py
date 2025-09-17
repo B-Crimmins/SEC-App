@@ -2,20 +2,20 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Dict, Any, cast
-from app.database import get_db
-from app.auth.auth import get_current_active_user
-from app.services.sec_service import SECService
-from app.services.user_service import UserService
-from app.models.user import User, UserTier
-from app.models.financial_report import FinancialReport
-from app.schemas.financial_report import FinancialReportResponse, FinancialDataRequest
-from app.utils.csv_export import export_financial_report_to_excel_format
+from database import get_db
+from auth.auth import get_current_active_user
+from services.sec_service import SECService
+from services.user_service import UserService
+from models.user import User, UserTier
+from models.financial_report import FinancialReport
+from schemas.financial_report import FinancialReportResponse, FinancialDataRequest
+from utils.csv_export import export_financial_report_to_excel_format
 import io
 
 router = APIRouter(prefix="/api/companies", tags=["financials"])
 
 
-@router.get("/{ticker}/financials", response_model=FinancialReportResponse)
+@router.post("/{ticker}/financials", response_model=FinancialReportResponse)
 async def get_financial_statements(
     ticker: str,
     report_type: str = Query(..., description="Report type (10-K, 10-Q, etc.)"),

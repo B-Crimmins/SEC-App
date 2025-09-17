@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, cast
-from app.database import get_db
-from app.auth.auth import get_current_active_user
-from app.services.sec_service import SECService
-from app.services.user_service import UserService
-from app.schemas.company import CompanySearch, CompanyInfo, CompanySearchResponse
-from app.models.user import User
+from database import get_db
+from auth.auth import get_current_active_user
+from services.sec_service import SECService
+from services.user_service import UserService
+from schemas.company import CompanySearch, CompanyInfo, CompanySearchResponse
+from models.user import User
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
 

@@ -1,8 +1,8 @@
 import pandas as pd
 import io
 from typing import Dict, Any, List, cast
-from app.models.financial_report import FinancialReport
-from app.models.analysis import Analysis
+from models.financial_report import FinancialReport
+from models.analysis import Analysis
 
 
 def export_financial_report_to_csv(financial_report: FinancialReport) -> str:

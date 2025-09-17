@@ -1,7 +1,7 @@
 import openai
 from typing import Dict, Any, List
 import time
-from app.config import settings
+from config import settings
 
 
 class OpenAIService:

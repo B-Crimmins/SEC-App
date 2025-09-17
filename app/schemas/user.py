@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime
-from app.models.user import UserTier
+from models.user import UserTier
 
 
 class UserBase(BaseModel):

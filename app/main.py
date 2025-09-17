@@ -4,9 +4,9 @@ from contextlib import asynccontextmanager
 from typing import cast
 import uvicorn
 
-from app.config import settings
-from app.database import engine, Base
-from app.api import (
+from config import settings
+from database import engine, Base
+from api import (
     auth_router,
     companies_router,
     financials_router,
@@ -102,9 +102,9 @@ async def get_usage_limits():
 @app.get("/api/test-export/{report_id}")
 async def test_export(report_id: int):
     """Test endpoint to check if export works"""
-    from app.database import SessionLocal
-    from app.models.financial_report import FinancialReport
-    from app.utils.csv_export import export_financial_data_simple_csv
+    from database import SessionLocal
+    from models.financial_report import FinancialReport
+    from utils.csv_export import export_financial_data_simple_csv
     
     db = SessionLocal()
     try:
@@ -138,8 +138,8 @@ async def test_export(report_id: int):
 
 if __name__ == "__main__":
     uvicorn.run(
-        "app.main:app",
+        "main:app",
         host="0.0.0.0",
-        port=8000,
+        port=3010,
         reload=settings.DEBUG
     ) 
