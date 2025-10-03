@@ -1,8 +1,9 @@
-import { AppShell, Box, Button, Group, Select, Stack, Table, TextInput, Title } from "@mantine/core";
+import { AppShell, Box, Button, Group, Paper, Select, Stack, Table, TextInput, Title, Typography } from "@mantine/core";
 import SideBar from "./Components/SideBar";
 import axios from "axios";
 import globalConfig from '../../global/globalConfig.json'
 import { useState } from "react";
+import { filterUsGaap, organizeItemsBySections } from "../../Helpers/TableHelpers";
 
 const AppHome = () => {
 
@@ -12,9 +13,13 @@ const AppHome = () => {
 
     const [table, setTable] = useState({
         caption: ticker + ' ' + reportType + ' Report financials for the year ' + year,
-        head: ['File Type', 'Quarter', 'Amount', 'Period'],
         body: [],
+        title: 'WEEEEE'
     });
+
+    const [incomeTable, setIncomeTable] = useState([]);
+    const [balanceTable, setBalanceTable] = useState([]);
+    const [cashflowTable, setcashFlowTable] = useState([]);
 
 
     // const tableData = {
@@ -53,11 +58,116 @@ const AppHome = () => {
                 [b.label, b.fiscal_period, formatUSD(b.value), b.period]
             ]
 
+            const incomeStatementData = filterUsGaap(x.data.income_statement);
+            const incomeStatementSections = [
+                { title: 'REVENUES', keywords: ['revenue', 'sales', 'income from contract', 'net sales'] },
+                { title: 'COST OF REVENUE', keywords: ['cost of goods', 'cost of revenue', 'cost of sales', 'cost of services'] },
+                { title: 'GROSS PROFIT', keywords: ['gross profit'] },
+                { title: 'OPERATING EXPENSES', keywords: ['research and development', 'rd', 'research', 'selling and marketing', 'marketing', 'advertising', 'general and administrative', 'g&a', 'administrative', 'operating expenses', 'total operating expenses'] },
+                { title: 'OPERATING INCOME', keywords: ['operating income', 'operating profit', 'ebit', 'earnings before interest and taxes', 'income from operations'] },
+                { title: 'OTHER INCOME (EXPENSE)', keywords: ['interest income', 'interest revenue', 'interest expense', 'interest', 'other income', 'other expense', 'gain', 'loss', 'non-operating', 'nonoperating', 'non operating'] },
+                { title: 'INCOME BEFORE TAXES', keywords: ['income before taxes', 'pretax income', 'income from continuing operations'] },
+                { title: 'INCOME TAX EXPENSE', keywords: ['income tax', 'tax expense', 'taxes', 'provision for income taxes'] },
+                { title: 'PER SHARE DATA', keywords: ['earnings per share', 'eps', 'basic eps', 'diluted eps'] },
+                { title: 'SHARES OUTSTANDING', keywords: ['shares outstanding', 'weighted average shares', 'basic shares', 'diluted shares'] },
+                { title: 'NET INCOME', keywords: ['net income', 'net earnings', 'net profit', 'net income loss'] }
+            ];
+            const incomeSubsections = organizeItemsBySections(incomeStatementData, incomeStatementSections);
+
+            // Organize balance sheet data (matching export logic exactly)
+            const balanceSheetData = filterUsGaap(x.data.balance_sheet);
+            const balanceSheetSections = [
+                { title: 'ASSETS', keywords: ['total assets'] },
+                { title: 'CURRENT ASSETS', keywords: ['current assets', 'cash and cash equivalents', 'cash', 'short term investments', 'marketable securities', 'accounts receivable', 'receivables', 'inventory', 'prepaid expenses', 'prepaid', 'other current assets'] },
+                { title: 'NON-CURRENT ASSETS', keywords: ['non current assets', 'property plant and equipment', 'ppe', 'fixed assets', 'accumulated depreciation', 'intangible assets', 'goodwill', 'other assets'] },
+                { title: 'LIABILITIES', keywords: ['total liabilities'] },
+                { title: 'CURRENT LIABILITIES', keywords: ['current liabilities', 'accounts payable', 'payables', 'accrued liabilities', 'accrued expenses', 'short term debt', 'current debt', 'other current liabilities'] },
+                { title: 'NON-CURRENT LIABILITIES', keywords: ['non current liabilities', 'long term debt', 'long term borrowings', 'deferred tax liabilities', 'other liabilities'] },
+                { title: 'SHAREHOLDERS\' EQUITY', keywords: ['total equity', 'stockholders equity', 'shareholders equity', 'common stock', 'capital stock', 'additional paid in capital', 'paid in capital', 'retained earnings', 'accumulated earnings', 'treasury stock', 'other equity', 'comprehensive income', 'accumulated other comprehensive income'] }
+            ];
+            const balanceSheetSubsections = organizeItemsBySections(balanceSheetData, balanceSheetSections);
+
+            // Organize cash flow data (matching export logic exactly)
+            const cashFlowData = filterUsGaap(x.data.cash_flow);
+            const cashFlowSections = [
+                { title: 'CASH AND CASH EQUIVALENTS', keywords: ['cash and cash equivalents', 'cash', 'cash equivalents'] },
+                { title: 'OPERATING ACTIVITIES', keywords: ['net income', 'depreciation and amortization', 'depreciation', 'stock based compensation', 'deferred taxes', 'changes in working capital', 'accounts receivable', 'inventory', 'accounts payable', 'other operating activities', 'net cash from operating activities'] },
+                { title: 'INVESTING ACTIVITIES', keywords: ['capital expenditures', 'capex', 'acquisitions', 'business acquisitions', 'investments', 'other investing activities', 'net cash from investing activities'] },
+                { title: 'FINANCING ACTIVITIES', keywords: ['debt issuance', 'borrowings', 'debt repayment', 'stock issuance', 'common stock issued', 'stock repurchases', 'treasury stock', 'dividends paid', 'other financing activities', 'net cash from financing activities'] },
+                { title: 'NET CHANGE IN CASH', keywords: ['net change in cash', 'cash at beginning of period', 'cash at end of period'] }
+            ];
+            const cashflowSubsections = organizeItemsBySections(cashFlowData, cashFlowSections);
+
+
+
+
+
+            //Massage the data here. 
+            //Pull the Title as a group. First Column is the label when you drill in, second column is the value. Disregard everything else.
+            let usdFormatter = new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+            });
+
+
+            let balanceSheet = []
+            balanceSheetSubsections.map((x) => {
+                let body = [];
+
+                x.items.map((y) => {
+
+
+                    body.push([y[1].label, usdFormatter.format(y[1].value)])
+                })
+
+                console.log(x.title);
+                console.log(body)
+
+                balanceSheet.push({ title: x.title, body: body })
+
+            });
+
+            //debugger
+            let incomeSheet = []
+            incomeSubsections.map((x) => {
+                let body = [];
+
+                x.items.map((y) => {
+                    body.push([y[1].label, usdFormatter.format(y[1].value)])
+                })
+
+                console.log(x.title);
+                console.log(body)
+
+                incomeSheet.push({ title: x.title, body: body })
+
+            });
+
+            let cashflowSheet = []
+            cashflowSubsections.map((x) => {
+                let body = [];
+
+                x.items.map((y) => {
+                    body.push([y[1].label, usdFormatter.format(y[1].value)])
+                })
+
+                console.log(x.title);
+                console.log(body)
+
+                cashflowSheet.push({ title: x.title, body: body })
+
+            });
+
+            setBalanceTable(balanceSheet);
+            setIncomeTable(incomeSheet);
+            setcashFlowTable(cashflowSheet);
+
+
+
             setTable((prevData) => {
                 //debugger;
                 let newData = { ...prevData }
                 newData.body = d;
-                console.log(newData)
                 return newData;
             })
 
@@ -75,7 +185,7 @@ const AppHome = () => {
             }}
         >
             <AppShell.Header>
-                <Box p={'1%'}>
+                <Box p={'10px'}>
                     <Title>
                         SEC-APP
                     </Title>
@@ -109,12 +219,46 @@ const AppHome = () => {
                 </Stack>
             </AppShell.Navbar>
 
-            <AppShell.Main>
-                <Table
-                    highlightOnHover
-                    data={table}
-                />
 
+            <AppShell.Main>
+                <Title pb={10} order={2}>Balance Statement</Title>
+                {balanceTable?.map((x) => (
+                    <>
+                        <Paper mb={10} withBorder shadow="xs" p="xl">
+                            <Title order={4}>{x.title}</Title>
+                            <Table
+                                highlightOnHover
+                                data={{ title: x.title, body: x.body }}
+                            />
+                        </Paper>
+                    </>
+                ))}
+
+                <Title pb={10} order={2}>Cashflow Statement</Title>
+                {cashflowTable?.map((x) => (
+                    <>
+                        <Paper mb={10} withBorder shadow="xs" p="xl">
+                            <Title order={4}>{x.title}</Title>
+                            <Table
+                                highlightOnHover
+                                data={{ title: x.title, body: x.body }}
+                            />
+                        </Paper>
+                    </>
+                ))}
+
+                <Title pb={10} order={2}>Income Statement</Title>
+                {incomeTable?.map((x) => (
+                    <>
+                        <Paper mb={10} withBorder shadow="xs" p="xl">
+                            <Title order={4}>{x.title}</Title>
+                            <Table
+                                highlightOnHover
+                                data={{ title: x.title, body: x.body }}
+                            />
+                        </Paper>
+                    </>
+                ))}             
             </AppShell.Main>
         </AppShell>
     </>)

@@ -7,7 +7,7 @@ import {
   HistoricalTrendsResult
 } from '../types';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'http://localhost:3010';
 
 // Create axios instance with default config
 const api = axios.create({

@@ -9,6 +9,7 @@ import App from './App.jsx'
 import HomePage from '../Pages/Home/HomePage.jsx';
 import LoginPage from '../Pages/Login/LoginPage.jsx';
 import AppHome from '../Pages/AppHome/AppHome.jsx';
+import StripePage from '../Pages/Stripe/StripePage.jsx';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -20,6 +21,7 @@ createRoot(document.getElementById('root')).render(
             <Route index element={<HomePage />} />
             <Route path='login' element={<LoginPage />} />
             <Route path='AppHome' element={<AppHome />} />
+            <Route path='Stripe' element={<StripePage />} />
           </Route>
         </Routes>
       </BrowserRouter>

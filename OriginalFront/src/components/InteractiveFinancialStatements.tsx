@@ -252,6 +252,7 @@ const InteractiveFinancialStatements: React.FC<InteractiveFinancialStatementsPro
 
   // Helper function to organize items by sections (matching export logic exactly)
   const organizeItemsBySections = (items: FinancialData, sections: Array<{title: string, keywords: string[]}>) => {
+    debugger
     const organizedSections: Array<{title: string, keywords: string[], items: [string, any][]}> = [];
     const usedConcepts = new Set<string>();
     

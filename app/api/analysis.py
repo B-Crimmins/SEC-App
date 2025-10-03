@@ -27,19 +27,6 @@ async def generate_analysis(
     user_service = UserService(db)
     usage = user_service.check_api_usage_limit(cast(int, current_user.id))
     
-    if usage['exceeded']:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"API usage limit exceeded. Used: {usage['current_usage']}/{usage['limit']}"
-        )
-    
-    # Check if user has access to AI analysis (paid tier)
-    # if current_user.tier.value == "free":
-    #     raise HTTPException(
-    #         status_code=status.HTTP_403_FORBIDDEN,
-    #         detail="AI analysis is only available for paid users. Please upgrade your subscription."
-    #     )
-    
     # Get or create financial report
     sec_service = SECService()
     companies_data = sec_service.search_companies(analysis_request.ticker)
@@ -70,7 +57,6 @@ async def generate_analysis(
         FinancialReport.report_type == analysis_request.report_type,
         FinancialReport.period == analysis_request.period
     ).first()
-    
     if not financial_report:
         # Get financial data from SEC
         financial_data = sec_service.get_financial_statements(
@@ -90,7 +76,7 @@ async def generate_analysis(
         print(f"  Income Statement Items: {len(financial_data.get('income_statement', {}))}")
         print(f"  Balance Sheet Items: {len(financial_data.get('balance_sheet', {}))}")
         print(f"  Cash Flow Items: {len(financial_data.get('cash_flow', {}))}")
-        
+
         # Show sample of what we're storing
         if financial_data.get('income_statement'):
             sample_key = list(financial_data['income_statement'].keys())[0]
@@ -124,9 +110,9 @@ async def generate_analysis(
     
     print(f"🔍 CHECKING FOR EXISTING ANALYSIS: {existing_analysis is not None}")
     
-    if existing_analysis:
-        print(f"🔍 RETURNING EXISTING ANALYSIS: {existing_analysis.id}")
-        return existing_analysis
+    # if existing_analysis:
+    #     print(f"🔍 RETURNING EXISTING ANALYSIS: {existing_analysis.id}")
+    #     return existing_analysis
     
     print(f"🔍 NO EXISTING ANALYSIS FOUND, GENERATING NEW ONE")
     
