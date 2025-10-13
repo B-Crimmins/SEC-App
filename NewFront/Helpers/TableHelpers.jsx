@@ -93,3 +93,38 @@ export const filterUsGaap = (items) => {
         Object.entries(items).filter(([key]) => key.toLowerCase().startsWith('us-gaap'))
     );
 };
+
+export const TableDiff = (arrayA, arrayB) => {
+
+    let arr = [];
+    for (let i = 0; i < arrayA.length; i++) {
+        let belement = arrayB.find(x => x[0] === arrayA[i][0]);
+
+        if (!Boolean(belement)) {
+            arr.push({ label: arrayA[i][0], year1: arrayA[i][1], year2: null });
+        }
+        else {
+            arr.push({ label: arrayA[i][0], year1: arrayA[i][1], year2: belement[1] });
+        }
+
+
+    }
+
+    for (let i = 0; i < arrayB.length; i++) {
+        let belement = arrayA.find(x => x[0] === arrayB[i][0]);
+
+        if (!Boolean(belement)) {
+            arr.push({ label: arrayB[i][0], year1: null, year2: arrayB[i][1] });
+        }
+
+        let exists = arr.find(x => x.label === arrayB[i][0]);
+
+        if (!Boolean(exists)) {
+            arr.push({ label: arrayB[i][0], year1: belement[i][1], year2: arrayB[i][1] });
+        }
+
+    }
+
+    return arr
+
+}

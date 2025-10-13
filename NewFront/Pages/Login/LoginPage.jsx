@@ -10,7 +10,8 @@ import {
   PasswordInput,
   Stack,
   Text,
-  TextInput
+  TextInput,
+  useMantineColorScheme
 } from '@mantine/core';
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom';
@@ -28,6 +29,8 @@ function LoginPage() {
   })
   const navigate = useNavigate();
 
+  const {setColorScheme, clearColorScheme} = useMantineColorScheme();
+
   const handleLogin = () => {
     //Do some ajax stuff here
     console.log("click");
@@ -40,8 +43,7 @@ function LoginPage() {
       sessionStorage.setItem('token', x.data.access_token);
       sessionStorage.setItem('user', JSON.stringify(x.data.user))
       navigate('/AppHome')
-    })
-    
+    })    
   }
 
   const handleChange = (e) => {
@@ -129,7 +131,7 @@ function LoginPage() {
               onClick={handleLogin}
               >
               {isRegister ? "Register" : "Login"}
-            </Button>
+            </Button>            
           </Group>
         </Paper>
       </Container>
