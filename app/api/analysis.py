@@ -204,6 +204,19 @@ async def generate_analysis(
         )
 
 
+@router.post("/test-this")
+async def generate_trend_analysis(
+    analysis_request: TrendAnalysisRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    sec_service = SECService()    
+    thing = sec_service.GetParsedData("789019", ["2021", "2022", "2023"])
+
+    return thing
+
+    
+
 @router.post("/trend-analysis", response_model=TrendAnalysisResponse)
 async def generate_trend_analysis(
     analysis_request: TrendAnalysisRequest,
@@ -222,11 +235,11 @@ async def generate_trend_analysis(
         )
     
     # Check if user has access to AI analysis (paid tier)
-    if current_user.tier.value == "free":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="AI analysis is only available for paid users. Please upgrade your subscription."
-        )
+    # if current_user.tier.value == "free":
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN,
+    #         detail="AI analysis is only available for paid users. Please upgrade your subscription."
+    #     )
     
     # Get company data
     sec_service = SECService()
@@ -331,17 +344,18 @@ async def generate_peer_group_analysis(
         )
     
     # Check if user has access to peer group analysis (paid tier)
-    print(f"🔍 Debug: User tier = {current_user.tier.value}")
-    if current_user.tier.value == "free":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Peer group analysis is only available for paid users. Please upgrade your subscription."
-        )
+    # print(f"🔍 Debug: User tier = {current_user.tier.value}")
+    # if current_user.tier.value == "free":
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN,
+    #         detail="Peer group analysis is only available for paid users. Please upgrade your subscription."
+    #     )
     
     tickers = analysis_request.get('tickers', [])
     report_type = analysis_request.get('report_type', '10-K')
     periods = analysis_request.get('periods', [])
     
+    print(tickers)
     if not tickers or not periods:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -352,6 +366,7 @@ async def generate_peer_group_analysis(
     sec_service = SECService()
     companies_data = {}
     
+    #Optimize, this loop is running an API call too often. 
     for ticker in tickers:
         companies = sec_service.search_companies(ticker)
         if companies:
@@ -417,15 +432,15 @@ async def generate_peer_group_analysis(
         ai_analysis = openai_service.analyze_peer_group(peer_group_data)
         
         return {
-            "peer_group_data": peer_group_data,
+            # "peer_group_data": peer_group_data,
             "calculated_ratios": calculated_ratios,
-            "analysis_summary": analysis_summary,
-            "executive_summary": ai_analysis.get('executive_summary', ''),
-            "revenue_trends": ai_analysis.get('revenue_trends', ''),
-            "risk_assessment": ai_analysis.get('risk_assessment', ''),
-            "openai_model_used": ai_analysis.get('openai_model_used', ''),
-            "tokens_used": ai_analysis.get('tokens_used', 0),
-            "processing_time": ai_analysis.get('processing_time', 0)
+            # "analysis_summary": analysis_summary,
+            # "executive_summary": ai_analysis.get('executive_summary', ''),
+            # "revenue_trends": ai_analysis.get('revenue_trends', ''),
+            # "risk_assessment": ai_analysis.get('risk_assessment', ''),
+            # "openai_model_used": ai_analysis.get('openai_model_used', ''),
+            # "tokens_used": ai_analysis.get('tokens_used', 0),
+            # "processing_time": ai_analysis.get('processing_time', 0)
         }
         
     except Exception as e:

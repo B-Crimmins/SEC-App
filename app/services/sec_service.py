@@ -20,6 +20,120 @@ class SECService:
             'Host': 'data.sec.gov'
         })
         self.xbrl_parser = XBRLParser()
+
+    def GetParsedData(self, cik: str, years: list[str]) -> dict:
+        
+        url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik.zfill(10)}.json"
+        headers = {"User-Agent": "Financial Analysis Tool contact@example.com"}
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        
+        company_facts = response.json()
+        us_gaap = company_facts["facts"]["us-gaap"]
+        
+        # Helper to extract yearly data
+        def extract_data(gaap_name):
+            if gaap_name not in us_gaap or "USD" not in us_gaap[gaap_name].get("units", {}):
+                return {}
+            
+            yearly = {}
+            for entry in us_gaap[gaap_name]["units"]["USD"]:
+                if entry.get("form") in ["10-K", "10-K/A"] and entry.get("fy"):
+                    year = str(entry["fy"])
+                    if year in years:
+                        yearly[year] = entry.get("val")
+            return yearly        
+        
+        income_statement_sections = [
+            {'title': 'REVENUES', 'keywords': ['revenue', 'sales', 'income from contract', 'net sales']},
+            {'title': 'COST OF REVENUE', 'keywords': ['cost of goods', 'cost of revenue', 'cost of sales', 'cost of services']},
+            {'title': 'GROSS PROFIT', 'keywords': ['gross profit']},
+            {'title': 'OPERATING EXPENSES', 'keywords': ['research and development', 'rd', 'research', 'selling and marketing', 'marketing', 'advertising', 'general and administrative', 'g&a', 'administrative', 'operating expenses', 'total operating expenses']},
+            {'title': 'OPERATING INCOME', 'keywords': ['operating income', 'operating profit', 'ebit', 'earnings before interest and taxes', 'income from operations']},
+            {'title': 'OTHER INCOME (EXPENSE)', 'keywords': ['interest income', 'interest revenue', 'interest expense', 'interest', 'other income', 'other expense', 'gain', 'loss', 'non-operating', 'nonoperating', 'non operating']},
+            {'title': 'INCOME BEFORE TAXES', 'keywords': ['income before taxes', 'pretax income', 'income from continuing operations']},
+            {'title': 'INCOME TAX EXPENSE', 'keywords': ['income tax', 'tax expense', 'taxes', 'provision for income taxes']},
+            {'title': 'PER SHARE DATA', 'keywords': ['earnings per share', 'eps', 'basic eps', 'diluted eps']},
+            {'title': 'SHARES OUTSTANDING', 'keywords': ['shares outstanding', 'weighted average shares', 'basic shares', 'diluted shares']},
+            {'title': 'NET INCOME', 'keywords': ['net income', 'net earnings', 'net profit', 'net income loss']}
+        ]
+
+        balance_sheet_sections = [
+            {'title': 'ASSETS', 'keywords': ['total assets']},
+            {'title': 'CURRENT ASSETS', 'keywords': ['current assets', 'cash and cash equivalents', 'cash', 'short term investments', 'marketable securities', 'accounts receivable', 'receivables', 'inventory', 'prepaid expenses', 'prepaid', 'other current assets']},
+            {'title': 'NON-CURRENT ASSETS', 'keywords': ['non current assets', 'property plant and equipment', 'ppe', 'fixed assets', 'accumulated depreciation', 'intangible assets', 'goodwill', 'other assets']},
+            {'title': 'LIABILITIES', 'keywords': ['total liabilities']},
+            {'title': 'CURRENT LIABILITIES', 'keywords': ['current liabilities', 'accounts payable', 'payables', 'accrued liabilities', 'accrued expenses', 'short term debt', 'current debt', 'other current liabilities']},
+            {'title': 'NON-CURRENT LIABILITIES', 'keywords': ['non current liabilities', 'long term debt', 'long term borrowings', 'deferred tax liabilities', 'other liabilities']},
+            {'title': 'SHAREHOLDERS\' EQUITY', 'keywords': ['total equity', 'stockholders equity', 'shareholders equity', 'common stock', 'capital stock', 'additional paid in capital', 'paid in capital', 'retained earnings', 'accumulated earnings', 'treasury stock', 'other equity', 'comprehensive income', 'accumulated other comprehensive income']}
+        ]
+
+        cash_flow_sections = [
+            {'title': 'CASH AND CASH EQUIVALENTS', 'keywords': ['cash and cash equivalents', 'cash', 'cash equivalents']},
+            {'title': 'OPERATING ACTIVITIES', 'keywords': ['net income', 'depreciation and amortization', 'depreciation', 'stock based compensation', 'deferred taxes', 'changes in working capital', 'accounts receivable', 'inventory', 'accounts payable', 'other operating activities', 'net cash from operating activities']},
+            {'title': 'INVESTING ACTIVITIES', 'keywords': ['capital expenditures', 'capex', 'acquisitions', 'business acquisitions', 'investments', 'other investing activities', 'net cash from investing activities']},
+            {'title': 'FINANCING ACTIVITIES', 'keywords': ['debt issuance', 'borrowings', 'debt repayment', 'stock issuance', 'common stock issued', 'stock repurchases', 'treasury stock', 'dividends paid', 'other financing activities', 'net cash from financing activities']},
+            {'title': 'NET CHANGE IN CASH', 'keywords': ['net change in cash', 'cash at beginning of period', 'cash at end of period']}
+        ]
+
+        def categorize_item(label, gaap_name, sections):
+            search_text = (label + ' ' + gaap_name).lower()
+            
+            for section in sections:
+                for keyword in section['keywords']:
+                    if keyword.lower() in search_text:
+                        return section['title']
+            return None
+        
+        categorized_data = {
+            'income_statement': {},
+            'balance_sheet': {},
+            'cash_flow': {}
+        }        
+
+        for section in income_statement_sections:
+            categorized_data['income_statement'][section['title']] = []
+        for section in balance_sheet_sections:
+            categorized_data['balance_sheet'][section['title']] = []
+        for section in cash_flow_sections:
+            categorized_data['cash_flow'][section['title']] = []        
+        
+        for gaap_name in us_gaap.keys():
+            data = extract_data(gaap_name)
+            if not data:
+                continue
+            
+            label = us_gaap[gaap_name].get("label", gaap_name)
+            item = {
+                "type": label,
+                "gaap_name": gaap_name,
+                "values": data
+            }           
+            
+            section = categorize_item(label, gaap_name, income_statement_sections)
+            if section:
+                categorized_data['income_statement'][section].append(item)
+                continue
+            
+            section = categorize_item(label, gaap_name, balance_sheet_sections)
+            if section:
+                categorized_data['balance_sheet'][section].append(item)
+                continue
+            
+            section = categorize_item(label, gaap_name, cash_flow_sections)
+            if section:
+                categorized_data['cash_flow'][section].append(item)
+        
+        statements = categorized_data
+        
+        return {
+            "company": {
+                "name": company_facts.get("entityName"),
+                "cik": company_facts.get("cik")
+            },
+            "years": years,
+            "statements": statements
+        }
     
     def search_companies(self, query: str) -> List[Dict[str, Any]]:
         """Search for companies by ticker or name"""
@@ -142,6 +256,7 @@ class SECService:
                         
                         # Extract financial data based on report type and period
                         financial_data = self._extract_financial_data(data, report_type, period)
+                        print("Here");
                         return financial_data
                     elif response.status_code == 404:
                         print(f"❌ Endpoint not found: {url}")
@@ -635,7 +750,7 @@ class SECService:
                 'trend_analysis': self._prepare_trend_analysis(historical_data)
             }
             
-            print(f"📈 Prepared trend analysis for {len(available_periods)} years: {available_periods}")
+            print(f"📈 Prepared trend analysis for {len(available_periods)} years: {available_periods}")            
             return trend_summary
             
         except Exception as e:

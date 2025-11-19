@@ -1,6 +1,58 @@
-export const organizeItemsBySections = (items, sections) => {
+
+const incomeStatementSections = [
+    { title: 'REVENUES', keywords: ['revenue', 'sales', 'income from contract', 'net sales'] },
+    { title: 'COST OF REVENUE', keywords: ['cost of goods', 'cost of revenue', 'cost of sales', 'cost of services'] },
+    { title: 'GROSS PROFIT', keywords: ['gross profit'] },
+    { title: 'OPERATING EXPENSES', keywords: ['research and development', 'rd', 'research', 'selling and marketing', 'marketing', 'advertising', 'general and administrative', 'g&a', 'administrative', 'operating expenses', 'total operating expenses'] },
+    { title: 'OPERATING INCOME', keywords: ['operating income', 'operating profit', 'ebit', 'earnings before interest and taxes', 'income from operations'] },
+    { title: 'OTHER INCOME (EXPENSE)', keywords: ['interest income', 'interest revenue', 'interest expense', 'interest', 'other income', 'other expense', 'gain', 'loss', 'non-operating', 'nonoperating', 'non operating'] },
+    { title: 'INCOME BEFORE TAXES', keywords: ['income before taxes', 'pretax income', 'income from continuing operations'] },
+    { title: 'INCOME TAX EXPENSE', keywords: ['income tax', 'tax expense', 'taxes', 'provision for income taxes'] },
+    { title: 'PER SHARE DATA', keywords: ['earnings per share', 'eps', 'basic eps', 'diluted eps'] },
+    { title: 'SHARES OUTSTANDING', keywords: ['shares outstanding', 'weighted average shares', 'basic shares', 'diluted shares'] },
+    { title: 'NET INCOME', keywords: ['net income', 'net earnings', 'net profit', 'net income loss'] }
+];
+
+const balanceSheetSections = [
+    { title: 'ASSETS', keywords: ['total assets'] },
+    { title: 'CURRENT ASSETS', keywords: ['current assets', 'cash and cash equivalents', 'cash', 'short term investments', 'marketable securities', 'accounts receivable', 'receivables', 'inventory', 'prepaid expenses', 'prepaid', 'other current assets'] },
+    { title: 'NON-CURRENT ASSETS', keywords: ['non current assets', 'property plant and equipment', 'ppe', 'fixed assets', 'accumulated depreciation', 'intangible assets', 'goodwill', 'other assets'] },
+    { title: 'LIABILITIES', keywords: ['total liabilities'] },
+    { title: 'CURRENT LIABILITIES', keywords: ['current liabilities', 'accounts payable', 'payables', 'accrued liabilities', 'accrued expenses', 'short term debt', 'current debt', 'other current liabilities'] },
+    { title: 'NON-CURRENT LIABILITIES', keywords: ['non current liabilities', 'long term debt', 'long term borrowings', 'deferred tax liabilities', 'other liabilities'] },
+    { title: 'SHAREHOLDERS\' EQUITY', keywords: ['total equity', 'stockholders equity', 'shareholders equity', 'common stock', 'capital stock', 'additional paid in capital', 'paid in capital', 'retained earnings', 'accumulated earnings', 'treasury stock', 'other equity', 'comprehensive income', 'accumulated other comprehensive income'] }
+];
+
+const cashFlowSections = [
+    { title: 'CASH AND CASH EQUIVALENTS', keywords: ['cash and cash equivalents', 'cash', 'cash equivalents'] },
+    { title: 'OPERATING ACTIVITIES', keywords: ['net income', 'depreciation and amortization', 'depreciation', 'stock based compensation', 'deferred taxes', 'changes in working capital', 'accounts receivable', 'inventory', 'accounts payable', 'other operating activities', 'net cash from operating activities'] },
+    { title: 'INVESTING ACTIVITIES', keywords: ['capital expenditures', 'capex', 'acquisitions', 'business acquisitions', 'investments', 'other investing activities', 'net cash from investing activities'] },
+    { title: 'FINANCING ACTIVITIES', keywords: ['debt issuance', 'borrowings', 'debt repayment', 'stock issuance', 'common stock issued', 'stock repurchases', 'treasury stock', 'dividends paid', 'other financing activities', 'net cash from financing activities'] },
+    { title: 'NET CHANGE IN CASH', keywords: ['net change in cash', 'cash at beginning of period', 'cash at end of period'] }
+];
+
+export const usdFormatter = new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+            });
+
+export const organizeItemsBySections = (items, type) => {
     let organizedSections = [];
     let usedConcepts = new Set();
+    let sections = [];
+
+    if (type === 'INCOME') {
+        sections = incomeStatementSections;
+    }
+
+    if (type === 'BALANCE') {
+        sections = balanceSheetSections
+    }
+
+    if (type === 'CASHFLOW') {
+        sections = cashFlowSections;
+    }
+
 
     // Process each section in order
     for (const section of sections) {
@@ -50,7 +102,7 @@ export const organizeItemsBySections = (items, sections) => {
                     if (matchesSection) {
                         // Debug logging for operating income section
                         if (section.title === 'OPERATING INCOME') {
-                            console.log(`🔍 OPERATING INCOME: Matched "${label}" with keywords:`, section.keywords);
+                           // console.log(`🔍 OPERATING INCOME: Matched "${label}" with keywords:`, section.keywords);
                         }
                         sectionItems.push([concept, data]);
                         usedConcepts.add(concept);
@@ -127,4 +179,8 @@ export const TableDiff = (arrayA, arrayB) => {
 
     return arr
 
+}
+
+export const FormatTable = (statementArrays) => {
+    //Do Stuff
 }

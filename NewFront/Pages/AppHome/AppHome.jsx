@@ -1,54 +1,53 @@
-import { AppShell, Box, Button, Group, Paper, Select, SimpleGrid, Stack, Table, TextInput, Title, Tooltip, Typography, useMantineColorScheme } from "@mantine/core";
+import { AppShell, Box, Button, Group, Paper, Select, SimpleGrid, Stack, Table, Tabs, TextInput, Title, Tooltip, Typography, useMantineColorScheme } from "@mantine/core";
 import SideBar from "./Components/SideBar";
 import axios from "axios";
 import globalConfig from '../../global/globalConfig.json'
 import { useState } from "react";
-import { filterUsGaap, organizeItemsBySections, TableDiff } from "../../Helpers/TableHelpers";
-import { IconBrightnessDown, IconLogout, IconMoon } from "@tabler/icons-react";
+import { filterUsGaap, organizeItemsBySections, TableDiff, usdFormatter } from "../../Helpers/TableHelpers";
+import { IconBrightnessDown, IconLogout, IconMoon, IconX } from "@tabler/icons-react";
+import { useNavigate } from "react-router-dom";
+import FinancialComparisonTable from "./Components/RatioAnalysis";
 
 
 const AppHome = () => {
 
-    const [ticker, setTicker] = useState('AAPL');
-    const [reportType, setReportType] = useState('10-K');
-    const [year, setYear] = useState('2023');
-    const [year2, setYear2] = useState('');
+    const [ticker, setTicker] = useState('');
+    const [tickers, setTickers] = useState([{ id: 1, ticker: '' }])
+    const [reportType, setReportType] = useState('');
+    const [year, setYear] = useState('');
     const [period, setPeriod] = useState(1);
+    const [years, setYears] = useState([{ id: 1, year: '' }]);
+    const [searchedYears, setSearchedYears] = useState([])
+    const [showRatioTable, setShowRatioTable] = useState(false);
+    const navigate = useNavigate();
 
-    const [table, setTable] = useState({
-        caption: ticker + ' ' + reportType + ' Report financials for the year ' + year,
-        body: [],
-        title: 'WEEEEE'
-    });
+
+    // const [table, setTable] = useState({
+    //     caption: ticker + ' ' + reportType + ' Report financials for the year ' + year,
+    //     body: [],
+    //     title: 'WEEEEE'
+    // });
+
+    //Refactor (single year vs multiple)
+    //Extra years, maybe scroll if it's too many
+    //Stripe page button
+    //Make logout button work
+    //Search for ratios API
+    //Forgot other multi year statements
+    //For ratios, analysis/use peer-group-analysis
+    //   I had to comment a lot of the information out. It was barfing out about 20MB of data, enough to crash a device.
 
     const [incomeTable, setIncomeTable] = useState([]);
     const [balanceTable, setBalanceTable] = useState([]);
     const [cashflowTable, setcashFlowTable] = useState([]);
 
-    const [incomeTable2, setIncomeTable2] = useState([]);
-    const [balanceTable2, setBalanceTable2] = useState([]);
-    const [cashflowTable2, setcashFlowTable2] = useState([]);
-
     const [fincomeTable, fsetIncomeTable] = useState([]);
     const [fbalanceTable, fsetBalanceTable] = useState([]);
     const [fcashflowTable, fsetcashFlowTable] = useState([]);
+    const [ratioTable, setRatioTable] = useState({})
+    const [activeTab, setActiveTab] = useState('Statements')
 
     const { colorScheme, setColorScheme, clearColorScheme } = useMantineColorScheme();
-
-    const [testTable, setTestTable] = useState([]);
-
-
-    // const tableData = {
-    //     caption: ticker + ' ' + reportType + ' Report financials for the year ' + year,
-    //     head: ['File Type', 'Quarter', 'Amount', 'Period'],
-    //     body: [
-    //         [6, 12.011, 'C', 'Carbon'],
-    //         [7, 14.007, 'N', 'Nitrogen'],
-    //         [39, 88.906, 'Y', 'Yttrium'],
-    //         [56, 137.33, 'Ba', 'Barium'],
-    //         [58, 140.12, 'Ce', 'Cerium'],
-    //     ],
-    // };
 
     const formatUSD = (amount) => {
         return new Intl.NumberFormat('en-US', {
@@ -57,116 +56,69 @@ const AppHome = () => {
         }).format(amount);
     };
 
+
     const handleSearchClick = () => {
-        if (Boolean(year2)) {
+        if(activeTab === 'Ratio Analysis'){
+            getRatioAnalysis();
+            return;
+        }
+        if (years.length > 1) {
             console.log('here')
-            getTickerInfo2();
+            getMultiYearTicker();
         }
         else {
             getTickerInfo();
         }
     }
 
+    const getRatioAnalysis = () => {
+        axios.post(globalConfig.appUrl + '/api/analysis/peer-group-analysis', { tickers: tickers.map((x) => x.ticker), report_type: reportType, periods: years.map((x) => x.year) }, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + sessionStorage.getItem('token')
+            }
+        }).then((x) => {
+            setRatioTable(x.data);
+            setShowRatioTable(true);
+        })
+    }
+
     const getTickerInfo = () => {
-        axios.post(globalConfig.appUrl + '/api/companies/' + ticker + '/financials?report_type=' + reportType + '&period=' + year, null, {
+        axios.post(globalConfig.appUrl + '/api/companies/' + tickers[0].ticker + '/financials?report_type=' + reportType + '&period=' + years[0].year, null, {
             headers: {
                 'Content-Type': 'multipart/form-data',
                 'Authorization': 'Bearer ' + sessionStorage.getItem('token')
             }
         }).then((x) => {
-            console.log(x.data.balance_sheet["us-gaap.CashAndCashEquivalentsAtCarryingValue"]);
-
-            let a = x.data.balance_sheet["us-gaap.CashAndCashEquivalentsAtCarryingValue"];
-            let b = x.data.balance_sheet["us-gaap.CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"];
-
-            let d = [
-                [a.label, a.fiscal_period, formatUSD(a.value), a.period],
-                [b.label, b.fiscal_period, formatUSD(b.value), b.period]
-            ]
 
             const incomeStatementData = filterUsGaap(x.data.income_statement);
-            const incomeStatementSections = [
-                { title: 'REVENUES', keywords: ['revenue', 'sales', 'income from contract', 'net sales'] },
-                { title: 'COST OF REVENUE', keywords: ['cost of goods', 'cost of revenue', 'cost of sales', 'cost of services'] },
-                { title: 'GROSS PROFIT', keywords: ['gross profit'] },
-                { title: 'OPERATING EXPENSES', keywords: ['research and development', 'rd', 'research', 'selling and marketing', 'marketing', 'advertising', 'general and administrative', 'g&a', 'administrative', 'operating expenses', 'total operating expenses'] },
-                { title: 'OPERATING INCOME', keywords: ['operating income', 'operating profit', 'ebit', 'earnings before interest and taxes', 'income from operations'] },
-                { title: 'OTHER INCOME (EXPENSE)', keywords: ['interest income', 'interest revenue', 'interest expense', 'interest', 'other income', 'other expense', 'gain', 'loss', 'non-operating', 'nonoperating', 'non operating'] },
-                { title: 'INCOME BEFORE TAXES', keywords: ['income before taxes', 'pretax income', 'income from continuing operations'] },
-                { title: 'INCOME TAX EXPENSE', keywords: ['income tax', 'tax expense', 'taxes', 'provision for income taxes'] },
-                { title: 'PER SHARE DATA', keywords: ['earnings per share', 'eps', 'basic eps', 'diluted eps'] },
-                { title: 'SHARES OUTSTANDING', keywords: ['shares outstanding', 'weighted average shares', 'basic shares', 'diluted shares'] },
-                { title: 'NET INCOME', keywords: ['net income', 'net earnings', 'net profit', 'net income loss'] }
-            ];
-            const incomeSubsections = organizeItemsBySections(incomeStatementData, incomeStatementSections);
-
-            // Organize balance sheet data (matching export logic exactly)
+            const incomeSubsections = organizeItemsBySections(incomeStatementData, 'INCOME');
             const balanceSheetData = filterUsGaap(x.data.balance_sheet);
-            const balanceSheetSections = [
-                { title: 'ASSETS', keywords: ['total assets'] },
-                { title: 'CURRENT ASSETS', keywords: ['current assets', 'cash and cash equivalents', 'cash', 'short term investments', 'marketable securities', 'accounts receivable', 'receivables', 'inventory', 'prepaid expenses', 'prepaid', 'other current assets'] },
-                { title: 'NON-CURRENT ASSETS', keywords: ['non current assets', 'property plant and equipment', 'ppe', 'fixed assets', 'accumulated depreciation', 'intangible assets', 'goodwill', 'other assets'] },
-                { title: 'LIABILITIES', keywords: ['total liabilities'] },
-                { title: 'CURRENT LIABILITIES', keywords: ['current liabilities', 'accounts payable', 'payables', 'accrued liabilities', 'accrued expenses', 'short term debt', 'current debt', 'other current liabilities'] },
-                { title: 'NON-CURRENT LIABILITIES', keywords: ['non current liabilities', 'long term debt', 'long term borrowings', 'deferred tax liabilities', 'other liabilities'] },
-                { title: 'SHAREHOLDERS\' EQUITY', keywords: ['total equity', 'stockholders equity', 'shareholders equity', 'common stock', 'capital stock', 'additional paid in capital', 'paid in capital', 'retained earnings', 'accumulated earnings', 'treasury stock', 'other equity', 'comprehensive income', 'accumulated other comprehensive income'] }
-            ];
-            const balanceSheetSubsections = organizeItemsBySections(balanceSheetData, balanceSheetSections);
-
-            // Organize cash flow data (matching export logic exactly)
+            const balanceSheetSubsections = organizeItemsBySections(balanceSheetData, 'BALANCE');
             const cashFlowData = filterUsGaap(x.data.cash_flow);
-            const cashFlowSections = [
-                { title: 'CASH AND CASH EQUIVALENTS', keywords: ['cash and cash equivalents', 'cash', 'cash equivalents'] },
-                { title: 'OPERATING ACTIVITIES', keywords: ['net income', 'depreciation and amortization', 'depreciation', 'stock based compensation', 'deferred taxes', 'changes in working capital', 'accounts receivable', 'inventory', 'accounts payable', 'other operating activities', 'net cash from operating activities'] },
-                { title: 'INVESTING ACTIVITIES', keywords: ['capital expenditures', 'capex', 'acquisitions', 'business acquisitions', 'investments', 'other investing activities', 'net cash from investing activities'] },
-                { title: 'FINANCING ACTIVITIES', keywords: ['debt issuance', 'borrowings', 'debt repayment', 'stock issuance', 'common stock issued', 'stock repurchases', 'treasury stock', 'dividends paid', 'other financing activities', 'net cash from financing activities'] },
-                { title: 'NET CHANGE IN CASH', keywords: ['net change in cash', 'cash at beginning of period', 'cash at end of period'] }
-            ];
-            const cashflowSubsections = organizeItemsBySections(cashFlowData, cashFlowSections);
-
-
-
-
-
-            //Massage the data here. 
-            //Pull the Title as a group. First Column is the label when you drill in, second column is the value. Disregard everything else.
-            let usdFormatter = new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: 'USD',
-            });
-
+            const cashflowSubsections = organizeItemsBySections(cashFlowData, 'CASHFLOW');
 
             let balanceSheet = []
             balanceSheetSubsections.map((x) => {
                 let body = [];
 
                 x.items.map((y) => {
-
-
                     body.push([y[1].label, usdFormatter.format(y[1].value)])
-                })
-
-                console.log(x.title);
-                console.log(body)
+                });
 
                 balanceSheet.push({ title: x.title, body: body })
 
             });
 
-            //debugger
             let incomeSheet = []
             incomeSubsections.map((x) => {
                 let body = [];
 
                 x.items.map((y) => {
                     body.push([y[1].label, usdFormatter.format(y[1].value)])
-                })
-
-                console.log(x.title);
-                console.log(body)
+                });
 
                 incomeSheet.push({ title: x.title, body: body })
-
             });
 
             let cashflowSheet = []
@@ -175,31 +127,18 @@ const AppHome = () => {
 
                 x.items.map((y) => {
                     body.push([y[1].label, usdFormatter.format(y[1].value)])
-                })
+                });
 
-                console.log(x.title);
-                console.log(body)
-
-                cashflowSheet.push({ title: x.title, body: body })
-
+                cashflowSheet.push({ title: x.title, body: body });
             });
 
             setBalanceTable(balanceSheet);
             setIncomeTable(incomeSheet);
             setcashFlowTable(cashflowSheet);
-
-
-            setTable((prevData) => {
-                //debugger;
-                let newData = { ...prevData }
-                newData.body = d;
-                return newData;
-            })
-
         })
 
-        if (Boolean(year2)) {
-            getTickerInfo2()
+        if (years.length > 1) {
+            getMultiYearTicker()
         }
         else {
             setPeriod(1);
@@ -208,194 +147,159 @@ const AppHome = () => {
 
     }
 
-    const getTickerInfo2 = () => {
-
-        axios.post(globalConfig.appUrl + '/api/analysis/trend-analysis', { periods: [year, year2], report_type: reportType, ticker: ticker }, {
+    const getMultiYearTicker = () => {
+        //Add a third year
+        let arrYear = years.map((x) => x.year);
+        axios.post(globalConfig.appUrl + '/api/analysis/trend-analysis', { periods: arrYear, report_type: reportType, ticker: tickers[0].ticker }, {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + sessionStorage.getItem('token')
             }
         }).then((x) => {
+            let incomeSheet = [];
+            let balanceSheet = [];
+            let cashflowSheet = [];
 
-            //Brute force. Abstract
-            //----------------------------------------------------
-            const incomeStatementSections = [
-                { title: 'REVENUES', keywords: ['revenue', 'sales', 'income from contract', 'net sales'] },
-                { title: 'COST OF REVENUE', keywords: ['cost of goods', 'cost of revenue', 'cost of sales', 'cost of services'] },
-                { title: 'GROSS PROFIT', keywords: ['gross profit'] },
-                { title: 'OPERATING EXPENSES', keywords: ['research and development', 'rd', 'research', 'selling and marketing', 'marketing', 'advertising', 'general and administrative', 'g&a', 'administrative', 'operating expenses', 'total operating expenses'] },
-                { title: 'OPERATING INCOME', keywords: ['operating income', 'operating profit', 'ebit', 'earnings before interest and taxes', 'income from operations'] },
-                { title: 'OTHER INCOME (EXPENSE)', keywords: ['interest income', 'interest revenue', 'interest expense', 'interest', 'other income', 'other expense', 'gain', 'loss', 'non-operating', 'nonoperating', 'non operating'] },
-                { title: 'INCOME BEFORE TAXES', keywords: ['income before taxes', 'pretax income', 'income from continuing operations'] },
-                { title: 'INCOME TAX EXPENSE', keywords: ['income tax', 'tax expense', 'taxes', 'provision for income taxes'] },
-                { title: 'PER SHARE DATA', keywords: ['earnings per share', 'eps', 'basic eps', 'diluted eps'] },
-                { title: 'SHARES OUTSTANDING', keywords: ['shares outstanding', 'weighted average shares', 'basic shares', 'diluted shares'] },
-                { title: 'NET INCOME', keywords: ['net income', 'net earnings', 'net profit', 'net income loss'] }
-            ];
+            years.map((y) => {
+                let incomeStatementData = filterUsGaap(x.data.historical_data[y.year].income_statement);
+                let incomeStatementSections = organizeItemsBySections(incomeStatementData, 'INCOME');
+                let balanceSheetData = filterUsGaap(x.data.historical_data[y.year].balance_sheet);
+                let balanceSheetSections = organizeItemsBySections(balanceSheetData, 'BALANCE');
+                let cashflowData = filterUsGaap(x.data.historical_data[y.year].cash_flow);
+                let cashflowSections = organizeItemsBySections(cashflowData, 'CASHFLOW');
 
-            const incomeStatementData = filterUsGaap(x.data.historical_data[year].income_statement);
-            const incomeStatementData2 = filterUsGaap(x.data.historical_data[year2].income_statement);
-            const incomeSubsections1 = organizeItemsBySections(incomeStatementData, incomeStatementSections);
-            const incomeSubsections2 = organizeItemsBySections(incomeStatementData2, incomeStatementSections);
+                incomeStatementSections.map((y) => {
+                    let body = [];
 
-            // Organize balance sheet data (matching export logic exactly)
-            const balanceSheetSections = [
-                { title: 'ASSETS', keywords: ['total assets'] },
-                { title: 'CURRENT ASSETS', keywords: ['current assets', 'cash and cash equivalents', 'cash', 'short term investments', 'marketable securities', 'accounts receivable', 'receivables', 'inventory', 'prepaid expenses', 'prepaid', 'other current assets'] },
-                { title: 'NON-CURRENT ASSETS', keywords: ['non current assets', 'property plant and equipment', 'ppe', 'fixed assets', 'accumulated depreciation', 'intangible assets', 'goodwill', 'other assets'] },
-                { title: 'LIABILITIES', keywords: ['total liabilities'] },
-                { title: 'CURRENT LIABILITIES', keywords: ['current liabilities', 'accounts payable', 'payables', 'accrued liabilities', 'accrued expenses', 'short term debt', 'current debt', 'other current liabilities'] },
-                { title: 'NON-CURRENT LIABILITIES', keywords: ['non current liabilities', 'long term debt', 'long term borrowings', 'deferred tax liabilities', 'other liabilities'] },
-                { title: 'SHAREHOLDERS\' EQUITY', keywords: ['total equity', 'stockholders equity', 'shareholders equity', 'common stock', 'capital stock', 'additional paid in capital', 'paid in capital', 'retained earnings', 'accumulated earnings', 'treasury stock', 'other equity', 'comprehensive income', 'accumulated other comprehensive income'] }
-            ];
+                    let sheetIndex = incomeSheet.findIndex(x => x.title === y.title);
 
-            const balanceSheetData = filterUsGaap(x.data.historical_data[year].balance_sheet);
-            const balanceSheetData2 = filterUsGaap(x.data.historical_data[year2].balance_sheet);
-            const balanceSheetSubsections1 = organizeItemsBySections(balanceSheetData, balanceSheetSections);
-            const balanceSheetSubsections2 = organizeItemsBySections(balanceSheetData2, balanceSheetSections);
+                    y.items.map((z) => {
+                        let bodyIndex = incomeSheet[sheetIndex]?.body?.findIndex(b => b[0] === z[1].label);
+                        if (bodyIndex > -1 && sheetIndex > -1) {
+                            // This actually works.
+                            incomeSheet[sheetIndex].body[bodyIndex].push(usdFormatter.format(z[1].value));
+                        } else {
+                            //
+                            body.push([z[1].label, usdFormatter.format(z[1].value)]);
+                        }
+                    });
 
-            // Organize cash flow data (matching export logic exactly)
-            const cashFlowSections = [
-                { title: 'CASH AND CASH EQUIVALENTS', keywords: ['cash and cash equivalents', 'cash', 'cash equivalents'] },
-                { title: 'OPERATING ACTIVITIES', keywords: ['net income', 'depreciation and amortization', 'depreciation', 'stock based compensation', 'deferred taxes', 'changes in working capital', 'accounts receivable', 'inventory', 'accounts payable', 'other operating activities', 'net cash from operating activities'] },
-                { title: 'INVESTING ACTIVITIES', keywords: ['capital expenditures', 'capex', 'acquisitions', 'business acquisitions', 'investments', 'other investing activities', 'net cash from investing activities'] },
-                { title: 'FINANCING ACTIVITIES', keywords: ['debt issuance', 'borrowings', 'debt repayment', 'stock issuance', 'common stock issued', 'stock repurchases', 'treasury stock', 'dividends paid', 'other financing activities', 'net cash from financing activities'] },
-                { title: 'NET CHANGE IN CASH', keywords: ['net change in cash', 'cash at beginning of period', 'cash at end of period'] }
-            ];
+                    if (sheetIndex === -1) {
+                        incomeSheet.push({ title: y.title, body: body });
+                    } else if (body.length > 0) {
+                        incomeSheet[sheetIndex].body.push(...body);
+                    }
+                });
 
-            const cashFlowData = filterUsGaap(x.data.historical_data[year].cash_flow);
-            const cashFlowData2 = filterUsGaap(x.data.historical_data[year2].cash_flow);
-            const cashflowSubsections1 = organizeItemsBySections(cashFlowData, cashFlowSections);
-            const cashflowSubsections2 = organizeItemsBySections(cashFlowData2, cashFlowSections);
-            //----------------------------------------------------
+                console.log(balanceSheetSections)
+                balanceSheetSections.map((y, i) => {
+                    let body = [];
 
-            //Massage the data here. 
-            //Pull the Title as a group. First Column is the label when you drill in, second column is the value. Disregard everything else.
-            let usdFormatter = new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: 'USD',
-            });
+                    let sheetIndex = balanceSheet.findIndex(x => x.title === y.title);
 
+                    y.items.map((z) => {
+                        let bodyIndex = balanceSheet[sheetIndex]?.body?.findIndex(b => b[0] === z[1].label);
+                        if (bodyIndex > -1 && sheetIndex > -1) {
+                            // This actually works.
+                            balanceSheet[sheetIndex].body[bodyIndex].push(usdFormatter.format(z[1].value));
+                        } else {
+                            //
+                            body.push([z[1].label, usdFormatter.format(z[1].value)]);
+                        }
+                    });
 
-            let balanceSheet1 = []
-            balanceSheetSubsections1.map((x) => {
-                let body = [];
+                    console.log(balanceSheet); // Move outside if you want post-loop view, or keep for debugging.
+                    if (sheetIndex === -1) {
+                        balanceSheet.push({ title: y.title, body: body });
+                    } else if (body.length > 0) {
+                        balanceSheet[sheetIndex].body.push(...body);
+                    }
+                });
 
-                x.items.map((y) => {
+                cashflowSections.map((y, i) => {
+                    let body = [];
 
+                    let sheetIndex = cashflowSheet.findIndex(x => x.title === y.title);
 
-                    body.push([y[1].label, usdFormatter.format(y[1].value)])
-                })
+                    y.items.map((z) => {
+                        let bodyIndex = cashflowSheet[sheetIndex]?.body?.findIndex(b => b[0] === z[1].label);
+                        if (bodyIndex > -1 && sheetIndex > -1) {
+                            // This actually works.
+                            cashflowSheet[sheetIndex].body[bodyIndex].push(usdFormatter.format(z[1].value));
+                        } else {
+                            //
+                            body.push([z[1].label, usdFormatter.format(z[1].value)]);
+                        }
+                    });
 
+                    console.log(cashflowSheet); // Move outside if you want post-loop view, or keep for debugging.
+                    if (sheetIndex === -1) {
+                        cashflowSheet.push({ title: y.title, body: body });
+                    } else if (body.length > 0) {
+                        cashflowSheet[sheetIndex].body.push(...body);
+                    }
+                });
 
-                balanceSheet1.push({ title: x.title, body: body })
+                // balanceTable.push({ year: y.year, balanceSheet });
+                // incomeTable.push({ year: y.year, incomeSheet });
+                // cashflowTable.push({ year: y.year, cashflowSheet });
 
-            });
+            })
 
-            let balanceSheet2 = []
-            balanceSheetSubsections2.map((x) => {
-                let body = [];
-
-                x.items.map((y) => {
-
-
-                    body.push([y[1].label, usdFormatter.format(y[1].value)])
-                })
-
-
-                balanceSheet2.push({ title: x.title, body: body })
-
-            });
-
-            //debugger
-            let incomeSheet1 = []
-            incomeSubsections1.map((x) => {
-                let body = [];
-
-                x.items.map((y) => {
-                    body.push([y[1].label, usdFormatter.format(y[1].value)])
-                })
-
-
-                incomeSheet1.push({ title: x.title, body: body })
-
-            });
-
-            let incomeSheet2 = []
-            incomeSubsections1.map((x) => {
-                let body = [];
-
-                x.items.map((y) => {
-                    body.push([y[1].label, usdFormatter.format(y[1].value)])
-                })
-
-
-                incomeSheet2.push({ title: x.title, body: body })
-
-            });
-
-            let cashflowSheet1 = []
-            cashflowSubsections1.map((x) => {
-                let body = [];
-
-                x.items.map((y) => {
-                    body.push([y[1].label, usdFormatter.format(y[1].value)])
-                })
-
-
-                cashflowSheet1.push({ title: x.title, body: body })
-
-            });
-
-            let cashflowSheet2 = []
-            cashflowSubsections2.map((x) => {
-                let body = [];
-
-                x.items.map((y) => {
-                    body.push([y[1].label, usdFormatter.format(y[1].value)])
-                })
-
-
-                cashflowSheet2.push({ title: x.title, body: body })
-
-            });
-
-
-
-
-            console.log(balanceSheet1);
-            debugger;
-
-            let fbalanceSheet = [];
-            let fincomeSheet = [];
-            let fcashflowSheet = [];
-
-            for (let i = 0; i < balanceSheet1.length; i++) {
-                var farray = TableDiff(balanceSheet1[i].body, balanceSheet2[i].body);
-
-                fbalanceSheet.push({ title: balanceSheet1[i].title, body: farray });
-
-            }
-
-            for (let i = 0; i < incomeSheet1.length; i++) {
-                var farray = TableDiff(incomeSheet1[i].body, incomeSheet2[i].body);
-
-                fincomeSheet.push({ title: incomeSheet1[i].title, body: farray });
-
-            }
-
-            for (let i = 0; i < cashflowSheet1.length; i++) {
-                var farray = TableDiff(cashflowSheet1[i].body, cashflowSheet2[i].body);
-
-                fcashflowSheet.push({ title: cashflowSheet1[i].title, body: farray });
-
-            }
-
-            fsetBalanceTable(fbalanceSheet);
-            fsetIncomeTable(fincomeSheet);
-            fsetcashFlowTable(fcashflowSheet);
+            setSearchedYears(arrYear)
+            fsetBalanceTable(balanceSheet);
+            fsetIncomeTable(incomeSheet);
+            fsetcashFlowTable(cashflowSheet);
             setPeriod(2);
         })
+    }
+
+    const handleYearAdd = () => {
+        setYears((prevData) => {
+            let x = [...prevData];
+            let keys = x.map(x => x.id);
+            let newKey = Math.max(...keys) + 1;
+            x.push({ id: newKey, year: '' });
+            return x;
+        })
+    }
+
+    const handleTickerAdd = () => {
+        setTickers((prevData) => {
+            let x = [...prevData];
+            let keys = x.map(x => x.id);
+            let newKey = Math.max(...keys) + 1;
+            x.push({ id: newKey, ticker: '' });
+            return x;
+        })
+    }
+
+    const handleYearInput = (e, i) => {
+        setYears((prevData) => {
+            let temp = [...prevData];
+            temp[i].year = e.target.value;
+            return temp;
+        })
+    }
+
+    const handletickerInput = (e, i) => {
+        setTickers((prevData) => {
+            let temp = [...prevData];
+            temp[i].ticker = e.target.value;
+            return temp;
+        })
+    }
+
+    const handleRemoveYear = (e) => {
+        setYears(prevData => prevData.filter(x => x.id !== e))
+    }
+
+     const handleRemoveTicker = (e) => {
+        setTickers(prevData => prevData.filter(x => x.id !== e))
+    }
+
+    const handleLogout = () => {
+        navigate('/')
     }
 
     return (<>
@@ -416,7 +320,9 @@ const AppHome = () => {
                         </Title>
                         <Tooltip label="Logout">
                             <Button variant="default">
-                                <IconLogout />
+                                <IconLogout
+                                    onClick={handleLogout}
+                                />
                             </Button>
                         </Tooltip>
                     </Group>
@@ -430,18 +336,38 @@ const AppHome = () => {
                             <Title order={3}>
                                 Search a Ticker
                             </Title>
-                            <TextInput
+                            {tickers?.map((x, i) => (
+                                <TextInput
+                                    placeholder={'Ticker ' + (i + 1)}
+                                    onChange={(e) => { handletickerInput(e, i) }}
+                                    maxLength={5}
+                                    key={x.id}
+                                    rightSection={i !== 0 ? <IconX onClick={() => { handleRemoveTicker(x.id) }} size={18} /> : null}
+                                />
+                            ))}
+                            {/* <TextInput
                                 placeholder='Ticker'
                                 onChange={(e) => { setTicker(e.target.value) }}
-                            />
-                            <TextInput
-                                placeholder='Year'
-                                onChange={(e) => { setYear(e.target.value) }}
-                            />
-                            <TextInput
-                                placeholder='Year2'
-                                onChange={(e) => { setYear2(e.target.value) }}
-                            />
+                            /> */}
+                            <Button
+                                onClick={handleTickerAdd}
+                            >
+                                Add Ticker
+                            </Button>
+                            {years?.map((x, i) => (
+                                <TextInput
+                                    placeholder={'Year ' + (i + 1)}
+                                    onChange={(e) => { handleYearInput(e, i) }}
+                                    maxLength={4}
+                                    key={x.id}
+                                    rightSection={i !== 0 ? <IconX onClick={() => { handleRemoveYear(x.id) }} size={18} /> : null}
+                                />
+                            ))}
+                            <Button
+                                onClick={handleYearAdd}
+                            >
+                                Add Year
+                            </Button>
                             <Select
                                 placeholder='Report Type'
                                 data={['10-K', '10-Q']}
@@ -474,122 +400,306 @@ const AppHome = () => {
 
 
             <AppShell.Main>
-                {period === 1 &&
-                    <>
-                        <Title pb={10} order={2}>Balance Statement</Title>
-                        {balanceTable?.map((x) => (
-                            <>
-                                <Paper mb={10} withBorder shadow="xs" p="xl">
-                                    <Title order={4}>{x.title}</Title>
-                                    <Table highlightOnHover>
-                                        <Table.Thead>
-                                            <Table.Tr>
-                                                <Table.Th w={50}>Type</Table.Th>
-                                                <Table.Th ta='right' w={20}>Amount</Table.Th>
-                                            </Table.Tr>
-                                        </Table.Thead>
-                                        <Table.Tbody>
-                                            {x.body?.map((x) => (
-                                                <>
-                                                    <Table.Tr>
-                                                        <Table.Td w={50}>{x[0]}</Table.Td>
-                                                        <Table.Td ta='right' w={20}>{x[1]}</Table.Td>
-                                                    </Table.Tr>
-                                                </>
-                                            ))}
-                                        </Table.Tbody>
-                                    </Table>
-                                </Paper>
-                            </>
-                        ))}
-                        <Title pb={10} order={2}>Cash Flow</Title>
-                        {cashflowTable?.map((x) => (
-                            <>
-                                <Paper mb={10} withBorder shadow="xs" p="xl">
-                                    <Title order={4}>{x.title}</Title>
-                                    <Table highlightOnHover>
-                                        <Table.Thead>
-                                            <Table.Tr>
-                                                <Table.Th w={50}>Type</Table.Th>
-                                                <Table.Th ta='right' w={20}>Amount</Table.Th>
-                                            </Table.Tr>
-                                        </Table.Thead>
-                                        <Table.Tbody>
-                                            {x.body?.map((x) => (
-                                                <>
-                                                    <Table.Tr>
-                                                        <Table.Td w={50}>{x[0]}</Table.Td>
-                                                        <Table.Td ta='right' w={20}>{x[1]}</Table.Td>
-                                                    </Table.Tr>
-                                                </>
-                                            ))}
-                                        </Table.Tbody>
-                                    </Table>
-                                </Paper>
-                            </>
-                        ))}
-                        <Title pb={10} order={2}>Income Statement</Title>
-                        {incomeTable?.map((x) => (
-                            <>
-                                <Paper mb={10} withBorder shadow="xs" p="xl">
-                                    <Title order={4}>{x.title}</Title>
-                                    <Table highlightOnHover>
-                                        <Table.Thead>
-                                            <Table.Tr>
-                                                <Table.Th w={50}>Type</Table.Th>
-                                                <Table.Th ta='right' w={20}>Amount</Table.Th>
-                                            </Table.Tr>
-                                        </Table.Thead>
-                                        <Table.Tbody>
-                                            {x.body?.map((x) => (
-                                                <>
-                                                    <Table.Tr>
-                                                        <Table.Td w={50}>{x[0]}</Table.Td>
-                                                        <Table.Td ta='right' w={20}>{x[1]}</Table.Td>
-                                                    </Table.Tr>
-                                                </>
-                                            ))}
-                                        </Table.Tbody>
-                                    </Table>
-                                </Paper>
-                            </>
-                        ))}
-                    </>
-                }
+                <Tabs value={activeTab} onChange={setActiveTab}>
+                    <Tabs.List>
+                        <Tabs.Tab value="Statements">
+                            Statements
+                        </Tabs.Tab>
+                        <Tabs.Tab value="Ratio Analysis">
+                            Ratio Analysis
+                        </Tabs.Tab>
+                    </Tabs.List>
 
-                {period === 2 &&
-                    <>
-                        <Title pb={10} order={2}>Balance Statement</Title>
-                        {fbalanceTable?.map((x) => (
+                    <Tabs.Panel value="Statements">
+                        {period === 1 &&
+                            <>
+                                <Title pb={10} order={2}>Balance Statement</Title>
+                                {balanceTable?.map((x) => (
+                                    <>
+                                        <Paper mb={10} withBorder shadow="xs" p="xl">
+                                            <Title order={4}>{x.title}</Title>
+                                            <Table highlightOnHover>
+                                                <Table.Thead>
+                                                    <Table.Tr>
+                                                        <Table.Th w={50}>Type</Table.Th>
+                                                        <Table.Th ta='right' w={20}>Amount</Table.Th>
+                                                    </Table.Tr>
+                                                </Table.Thead>
+                                                <Table.Tbody>
+                                                    {x.body?.map((x) => (
+                                                        <>
+                                                            <Table.Tr>
+                                                                <Table.Td w={50}>{x[0]}</Table.Td>
+                                                                <Table.Td ta='right' w={20}>{x[1]}</Table.Td>
+                                                            </Table.Tr>
+                                                        </>
+                                                    ))}
+                                                </Table.Tbody>
+                                            </Table>
+                                        </Paper>
+                                    </>
+                                ))}
+                                <Title pb={10} order={2}>Cash Flow</Title>
+                                {cashflowTable?.map((x) => (
+                                    <>
+                                        <Paper mb={10} withBorder shadow="xs" p="xl">
+                                            <Title order={4}>{x.title}</Title>
+                                            <Table highlightOnHover>
+                                                <Table.Thead>
+                                                    <Table.Tr>
+                                                        <Table.Th w={50}>Type</Table.Th>
+                                                        <Table.Th ta='right' w={20}>Amount</Table.Th>
+                                                    </Table.Tr>
+                                                </Table.Thead>
+                                                <Table.Tbody>
+                                                    {x.body?.map((x) => (
+                                                        <>
+                                                            <Table.Tr>
+                                                                <Table.Td w={50}>{x[0]}</Table.Td>
+                                                                <Table.Td ta='right' w={20}>{x[1]}</Table.Td>
+                                                            </Table.Tr>
+                                                        </>
+                                                    ))}
+                                                </Table.Tbody>
+                                            </Table>
+                                        </Paper>
+                                    </>
+                                ))}
+                                <Title pb={10} order={2}>Income Statement</Title>
+                                {incomeTable?.map((x) => (
+                                    <>
+                                        <Paper mb={10} withBorder shadow="xs" p="xl">
+                                            <Title order={4}>{x.title}</Title>
+                                            <Table highlightOnHover>
+                                                <Table.Thead>
+                                                    <Table.Tr>
+                                                        <Table.Th w={50}>Type</Table.Th>
+                                                        <Table.Th ta='right' w={20}>Amount</Table.Th>
+                                                    </Table.Tr>
+                                                </Table.Thead>
+                                                <Table.Tbody>
+                                                    {x.body?.map((x) => (
+                                                        <>
+                                                            <Table.Tr>
+                                                                <Table.Td w={50}>{x[0]}</Table.Td>
+                                                                <Table.Td ta='right' w={20}>{x[1]}</Table.Td>
+                                                            </Table.Tr>
+                                                        </>
+                                                    ))}
+                                                </Table.Tbody>
+                                            </Table>
+                                        </Paper>
+                                    </>
+                                ))}
+                            </>
+                        }
+
+                        {period === 2 &&
+                            <>
+                                <Title pb={10} order={2}>Balance Statement</Title>
+                                {fbalanceTable?.map((item, index) => (
+                                    <Paper key={index} mb={10} withBorder shadow="xs" p="xl">
+                                        <Title order={4}>{item.title}</Title>
+                                        <Table highlightOnHover tableLayout="fixed">
+                                            <Table.Thead>
+                                                <Table.Tr>
+                                                    <Table.Th
+                                                        style={{
+                                                            width: '100px',
+                                                            minWidth: '50px',
+                                                            whiteSpace: 'normal',
+                                                            wordBreak: 'break-word',
+                                                        }}
+                                                    >
+                                                        Type
+                                                    </Table.Th>
+                                                    {searchedYears?.map((year) => (
+                                                        <Table.Th
+                                                            key={year}
+                                                            ta="right"
+                                                            style={{
+                                                                width: '150px',
+                                                                minWidth: '150px',
+                                                            }}
+                                                        >
+                                                            {year}
+                                                        </Table.Th>
+                                                    ))}
+                                                </Table.Tr>
+                                            </Table.Thead>
+                                            <Table.Tbody>
+                                                {item.body?.map((row, rowIndex) => (
+                                                    <Table.Tr key={rowIndex}>
+                                                        {row.map((cell, colIndex) => (
+                                                            <Table.Td
+                                                                key={colIndex}
+                                                                ta={colIndex === 0 ? 'left' : 'right'}
+                                                                style={{
+                                                                    ...(colIndex === 0 && {
+                                                                        whiteSpace: 'normal',
+                                                                        wordBreak: 'break-word',
+                                                                    }),
+                                                                }}
+                                                            >
+                                                                {cell}
+                                                            </Table.Td>
+                                                        ))}
+                                                    </Table.Tr>
+                                                ))}
+                                            </Table.Tbody>
+                                        </Table>
+                                    </Paper>
+                                ))}
+                                <Title pb={10} order={2}>Cash Flow</Title>
+                                {fcashflowTable?.map((item, index) => (
+                                    <Paper key={index} mb={10} withBorder shadow="xs" p="xl">
+                                        <Title order={4}>{item.title}</Title>
+                                        <Table highlightOnHover tableLayout="fixed">
+                                            <Table.Thead>
+                                                <Table.Tr>
+                                                    <Table.Th
+                                                        style={{
+                                                            width: '100px',
+                                                            minWidth: '50px',
+                                                            whiteSpace: 'normal',
+                                                            wordBreak: 'break-word',
+                                                        }}
+                                                    >
+                                                        Type
+                                                    </Table.Th>
+                                                    {searchedYears?.map((year) => (
+                                                        <Table.Th
+                                                            key={year}
+                                                            ta="right"
+                                                            style={{
+                                                                width: '150px',
+                                                                minWidth: '150px',
+                                                            }}
+                                                        >
+                                                            {year}
+                                                        </Table.Th>
+                                                    ))}
+                                                </Table.Tr>
+                                            </Table.Thead>
+                                            <Table.Tbody>
+                                                {item.body?.map((row, rowIndex) => (
+                                                    <Table.Tr key={rowIndex}>
+                                                        {row.map((cell, colIndex) => (
+                                                            <Table.Td
+                                                                key={colIndex}
+                                                                ta={colIndex === 0 ? 'left' : 'right'}
+                                                                style={{
+                                                                    ...(colIndex === 0 && {
+                                                                        whiteSpace: 'normal',
+                                                                        wordBreak: 'break-word',
+                                                                    }),
+                                                                }}
+                                                            >
+                                                                {cell}
+                                                            </Table.Td>
+                                                        ))}
+                                                    </Table.Tr>
+                                                ))}
+                                            </Table.Tbody>
+                                        </Table>
+                                    </Paper>
+                                ))}
+                                <Title pb={10} order={2}>Income Statement</Title>
+                                {fincomeTable?.map((item, index) => (
+                                    <Paper key={index} mb={10} withBorder shadow="xs" p="xl">
+                                        <Title order={4}>{item.title}</Title>
+                                        <Table highlightOnHover tableLayout="fixed">
+                                            <Table.Thead>
+                                                <Table.Tr>
+                                                    <Table.Th
+                                                        style={{
+                                                            width: '100px',
+                                                            minWidth: '50px',
+                                                            whiteSpace: 'normal',
+                                                            wordBreak: 'break-word',
+                                                        }}
+                                                    >
+                                                        Type
+                                                    </Table.Th>
+                                                    {searchedYears?.map((year) => (
+                                                        <Table.Th
+                                                            key={year}
+                                                            ta="right"
+                                                            style={{
+                                                                width: '150px',
+                                                                minWidth: '150px',
+                                                            }}
+                                                        >
+                                                            {year}
+                                                        </Table.Th>
+                                                    ))}
+                                                </Table.Tr>
+                                            </Table.Thead>
+                                            <Table.Tbody>
+                                                {item.body?.map((row, rowIndex) => (
+                                                    <Table.Tr key={rowIndex}>
+                                                        {row.map((cell, colIndex) => (
+                                                            <Table.Td
+                                                                key={colIndex}
+                                                                ta={colIndex === 0 ? 'left' : 'right'}
+                                                                style={{
+                                                                    ...(colIndex === 0 && {
+                                                                        whiteSpace: 'normal',
+                                                                        wordBreak: 'break-word',
+                                                                    }),
+                                                                }}
+                                                            >
+                                                                {cell}
+                                                            </Table.Td>
+                                                        ))}
+                                                    </Table.Tr>
+                                                ))}
+                                            </Table.Tbody>
+                                        </Table>
+                                    </Paper>
+                                ))}
+
+
+                                {/* {fbalanceTable?.map((x) => (
                             <>
                                 <Paper mb={10} withBorder shadow="xs" p="xl">
                                     <Title order={4}>{x.title}</Title>
                                     <Table highlightOnHover>
                                         <Table.Thead>
                                             <Table.Tr>
-                                                <Table.Th w={50}>Type</Table.Th>
-                                                <Table.Th ta='right' w={20}>{year}</Table.Th>
-                                                <Table.Th ta='right' w={20}>{year2}</Table.Th>
+                                                <Table.Th w={20} style={{backgroundColor:'blue'}}>Type</Table.Th>
+                                                {searchedYears?.map((x) => (
+                                                    <>
+                                                        <Table.Th ta='right' style={{backgroundColor:'red'}} w={50}>{x}</Table.Th>
+                                                    </>
+                                                ))}
                                             </Table.Tr>
                                         </Table.Thead>
                                         <Table.Tbody>
                                             {x.body?.map((x) => (
                                                 <>
-                                                    <Table.Tr>
-                                                        <Table.Td w={50}>{x.label}</Table.Td>
-                                                        <Table.Td ta='right' w={20}>{x.year1 === null ? '-' : x.year1}</Table.Td>
-                                                        <Table.Td ta='right' w={20}>{x.year2 === null ? '-' : x.year2}</Table.Td>
-                                                    </Table.Tr>
+                                                        <Table.Tr>
+                                                    {x.map((v,i) => (
+                                                            <Table.Td ta={i === 0 ? 'left' : 'right'} w={20}>{v}</Table.Td>
+                                                        ))}
+                                                        </Table.Tr>
+
                                                 </>
                                             ))}
                                         </Table.Tbody>
                                     </Table>
                                 </Paper>
                             </>
-                        ))}
-                    </>
-                }
-
+                        ))} */}
+                            </>
+                        }
+                    </Tabs.Panel>
+                    <Tabs.Panel value="Ratio Analysis">
+                        <>
+                            {showRatioTable && <FinancialComparisonTable data={ratioTable} selectedTickers={tickers.map((x) => x.ticker)}/>}
+                        </>
+                    </Tabs.Panel>
+                </Tabs>
             </AppShell.Main>
         </AppShell>
     </>)

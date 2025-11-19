@@ -11,7 +11,6 @@ import {
   Stack,
   Text,
   TextInput,
-  useMantineColorScheme
 } from '@mantine/core';
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom';
@@ -29,7 +28,7 @@ function LoginPage() {
   })
   const navigate = useNavigate();
 
-  const {setColorScheme, clearColorScheme} = useMantineColorScheme();
+  
 
   const handleLogin = () => {
     //Do some ajax stuff here
