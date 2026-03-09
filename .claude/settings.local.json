@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(printf:*)",
+      "Bash(python sec_financial_export.py:*)",
+      "Bash(python:*)",
+      "WebFetch(domain:edgartools.readthedocs.io)",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}

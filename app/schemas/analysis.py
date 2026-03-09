@@ -47,6 +47,15 @@ class TrendAnalysisRequest(BaseModel):
     include_liquidity_analysis: bool = True
 
 
+class TrendRequestTest(BaseModel):
+    ticker: List[str]
+    report_type: str
+    periods: List[str]  # List of years like ["2023", "2022", "2021"]
+    include_risk_assessment: bool = True
+    include_growth_analysis: bool = True
+    include_liquidity_analysis: bool = True
+
+
 class TrendAnalysisResponse(BaseModel):
     company_ticker: str
     company_name: str

@@ -20,6 +20,261 @@ class SECService:
             'Host': 'data.sec.gov'
         })
         self.xbrl_parser = XBRLParser()
+        
+    def GetMultiParsedData(self, ciks: list[str], years: list[str]) -> dict:
+    
+        def fetch_and_parse_single_company(cik: str, years: list[str]) -> dict:
+            """Parse data for a single company"""
+            url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik.zfill(10)}.json"
+            headers = {"User-Agent": "Financial Analysis Tool contact@example.com"}
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            
+            company_facts = response.json()
+            us_gaap = company_facts["facts"]["us-gaap"]
+            
+            # Helper to extract yearly data
+            def extract_data(gaap_name):
+                if gaap_name not in us_gaap or "USD" not in us_gaap[gaap_name].get("units", {}):
+                    return {}
+                
+                yearly = {}
+                for entry in us_gaap[gaap_name]["units"]["USD"]:
+                    if entry.get("form") in ["10-K", "10-K/A"] and entry.get("fy"):
+                        year = str(entry["fy"])
+                        if year in years:
+                            yearly[year] = entry.get("val")
+                return yearly        
+            
+            income_statement_sections = [
+                {'title': 'REVENUES', 'keywords': ['revenue', 'sales', 'income from contract', 'net sales']},
+                {'title': 'COST OF REVENUE', 'keywords': ['cost of goods', 'cost of revenue', 'cost of sales', 'cost of services']},
+                {'title': 'GROSS PROFIT', 'keywords': ['gross profit']},
+                {'title': 'OPERATING EXPENSES', 'keywords': ['research and development', 'rd', 'research', 'selling and marketing', 'marketing', 'advertising', 'general and administrative', 'g&a', 'administrative', 'operating expenses', 'total operating expenses']},
+                {'title': 'OPERATING INCOME', 'keywords': ['operating income', 'operating profit', 'ebit', 'earnings before interest and taxes', 'income from operations']},
+                {'title': 'OTHER INCOME (EXPENSE)', 'keywords': ['interest income', 'interest revenue', 'interest expense', 'interest', 'other income', 'other expense', 'gain', 'loss', 'non-operating', 'nonoperating', 'non operating']},
+                {'title': 'INCOME BEFORE TAXES', 'keywords': ['income before taxes', 'pretax income', 'income from continuing operations']},
+                {'title': 'INCOME TAX EXPENSE', 'keywords': ['income tax', 'tax expense', 'taxes', 'provision for income taxes']},
+                {'title': 'PER SHARE DATA', 'keywords': ['earnings per share', 'eps', 'basic eps', 'diluted eps']},
+                {'title': 'SHARES OUTSTANDING', 'keywords': ['shares outstanding', 'weighted average shares', 'basic shares', 'diluted shares']},
+                {'title': 'NET INCOME', 'keywords': ['net income', 'net earnings', 'net profit', 'net income loss']}
+            ]
+
+            balance_sheet_sections = [
+                {'title': 'ASSETS', 'keywords': ['total assets']},
+                {'title': 'CURRENT ASSETS', 'keywords': ['current assets', 'cash and cash equivalents', 'cash', 'short term investments', 'marketable securities', 'accounts receivable', 'receivables', 'inventory', 'prepaid expenses', 'prepaid', 'other current assets']},
+                {'title': 'NON-CURRENT ASSETS', 'keywords': ['non current assets', 'property plant and equipment', 'ppe', 'fixed assets', 'accumulated depreciation', 'intangible assets', 'goodwill', 'other assets']},
+                {'title': 'LIABILITIES', 'keywords': ['total liabilities']},
+                {'title': 'CURRENT LIABILITIES', 'keywords': ['current liabilities', 'accounts payable', 'payables', 'accrued liabilities', 'accrued expenses', 'short term debt', 'current debt', 'other current liabilities']},
+                {'title': 'NON-CURRENT LIABILITIES', 'keywords': ['non current liabilities', 'long term debt', 'long term borrowings', 'deferred tax liabilities', 'other liabilities']},
+                {'title': 'SHAREHOLDERS\' EQUITY', 'keywords': ['total equity', 'stockholders equity', 'shareholders equity', 'common stock', 'capital stock', 'additional paid in capital', 'paid in capital', 'retained earnings', 'accumulated earnings', 'treasury stock', 'other equity', 'comprehensive income', 'accumulated other comprehensive income']}
+            ]
+
+            cash_flow_sections = [
+                {'title': 'CASH AND CASH EQUIVALENTS', 'keywords': ['cash and cash equivalents', 'cash', 'cash equivalents']},
+                {'title': 'OPERATING ACTIVITIES', 'keywords': ['net income', 'depreciation and amortization', 'depreciation', 'stock based compensation', 'deferred taxes', 'changes in working capital', 'accounts receivable', 'inventory', 'accounts payable', 'other operating activities', 'net cash from operating activities']},
+                {'title': 'INVESTING ACTIVITIES', 'keywords': ['capital expenditures', 'capex', 'acquisitions', 'business acquisitions', 'investments', 'other investing activities', 'net cash from investing activities']},
+                {'title': 'FINANCING ACTIVITIES', 'keywords': ['debt issuance', 'borrowings', 'debt repayment', 'stock issuance', 'common stock issued', 'stock repurchases', 'treasury stock', 'dividends paid', 'other financing activities', 'net cash from financing activities']},
+                {'title': 'NET CHANGE IN CASH', 'keywords': ['net change in cash', 'cash at beginning of period', 'cash at end of period']}
+            ]
+
+            def categorize_item(label, gaap_name, sections):
+                search_text = ((label or "") + ' ' + (gaap_name or "")).lower()
+    
+                for section in sections:
+                    for keyword in section['keywords']:
+                        if keyword.lower() in search_text:
+                            return section['title']
+                return None
+            
+            categorized_data = {
+                'income_statement': {},
+                'balance_sheet': {},
+                'cash_flow': {}
+            }        
+
+            for section in income_statement_sections:
+                categorized_data['income_statement'][section['title']] = []
+            for section in balance_sheet_sections:
+                categorized_data['balance_sheet'][section['title']] = []
+            for section in cash_flow_sections:
+                categorized_data['cash_flow'][section['title']] = []        
+            
+            for gaap_name in us_gaap.keys():
+                
+                data = extract_data(gaap_name)
+                values = {year: None for year in years}
+                values.update(data)
+                label = us_gaap[gaap_name].get("label", gaap_name)
+                
+                item = {
+                    "type": label,
+                    "gaap_name": gaap_name,
+                    "values": values
+                }           
+                
+                section = categorize_item(label, gaap_name, income_statement_sections)
+                if section:
+                    categorized_data['income_statement'][section].append(item)
+                    continue
+                
+                section = categorize_item(label, gaap_name, balance_sheet_sections)
+                if section:
+                    categorized_data['balance_sheet'][section].append(item)
+                    continue
+                
+                section = categorize_item(label, gaap_name, cash_flow_sections)
+                if section:
+                    categorized_data['cash_flow'][section].append(item)
+            
+            statements = categorized_data
+            
+            return {
+                "company": {
+                    "name": company_facts.get("entityName"),
+                    "cik": company_facts.get("cik")
+                },
+                "years": years,
+                "statements": statements
+            }
+        
+        # Process all companies
+        result = {
+            "companies": [],
+            "years": years,
+            "summary": {
+                "total_companies": len(ciks),
+                "companies_processed": 0,
+                "errors": []
+            }
+        }
+        
+        for cik in ciks:
+            try:
+                company_data = fetch_and_parse_single_company(cik, years)
+                result["companies"].append(company_data)
+                result["summary"]["companies_processed"] += 1
+            except Exception as e:
+                result["summary"]["errors"].append({
+                    "cik": cik,
+                    "error": str(e)
+                })
+        
+        return result
+    
+    def GetParsedData(self, cik: str, years: list[str]) -> dict:
+        
+        url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik.zfill(10)}.json"
+        headers = {"User-Agent": "Financial Analysis Tool contact@example.com"}
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        
+        company_facts = response.json()
+        us_gaap = company_facts["facts"]["us-gaap"]
+        
+        # Helper to extract yearly data
+        def extract_data(gaap_name):
+            if gaap_name not in us_gaap or "USD" not in us_gaap[gaap_name].get("units", {}):
+                return {}
+            
+            yearly = {}
+            for entry in us_gaap[gaap_name]["units"]["USD"]:
+                if entry.get("form") in ["10-K", "10-K/A"] and entry.get("fy"):
+                    year = str(entry["fy"])
+                    if year in years:
+                        yearly[year] = entry.get("val")
+            return yearly        
+        
+        income_statement_sections = [
+            {'title': 'REVENUES', 'keywords': ['revenue', 'sales', 'income from contract', 'net sales']},
+            {'title': 'COST OF REVENUE', 'keywords': ['cost of goods', 'cost of revenue', 'cost of sales', 'cost of services']},
+            {'title': 'GROSS PROFIT', 'keywords': ['gross profit']},
+            {'title': 'OPERATING EXPENSES', 'keywords': ['research and development', 'rd', 'research', 'selling and marketing', 'marketing', 'advertising', 'general and administrative', 'g&a', 'administrative', 'operating expenses', 'total operating expenses']},
+            {'title': 'OPERATING INCOME', 'keywords': ['operating income', 'operating profit', 'ebit', 'earnings before interest and taxes', 'income from operations']},
+            {'title': 'OTHER INCOME (EXPENSE)', 'keywords': ['interest income', 'interest revenue', 'interest expense', 'interest', 'other income', 'other expense', 'gain', 'loss', 'non-operating', 'nonoperating', 'non operating']},
+            {'title': 'INCOME BEFORE TAXES', 'keywords': ['income before taxes', 'pretax income', 'income from continuing operations']},
+            {'title': 'INCOME TAX EXPENSE', 'keywords': ['income tax', 'tax expense', 'taxes', 'provision for income taxes']},
+            {'title': 'PER SHARE DATA', 'keywords': ['earnings per share', 'eps', 'basic eps', 'diluted eps']},
+            {'title': 'SHARES OUTSTANDING', 'keywords': ['shares outstanding', 'weighted average shares', 'basic shares', 'diluted shares']},
+            {'title': 'NET INCOME', 'keywords': ['net income', 'net earnings', 'net profit', 'net income loss']}
+        ]
+
+        balance_sheet_sections = [
+            {'title': 'ASSETS', 'keywords': ['total assets']},
+            {'title': 'CURRENT ASSETS', 'keywords': ['current assets', 'cash and cash equivalents', 'cash', 'short term investments', 'marketable securities', 'accounts receivable', 'receivables', 'inventory', 'prepaid expenses', 'prepaid', 'other current assets']},
+            {'title': 'NON-CURRENT ASSETS', 'keywords': ['non current assets', 'property plant and equipment', 'ppe', 'fixed assets', 'accumulated depreciation', 'intangible assets', 'goodwill', 'other assets']},
+            {'title': 'LIABILITIES', 'keywords': ['total liabilities']},
+            {'title': 'CURRENT LIABILITIES', 'keywords': ['current liabilities', 'accounts payable', 'payables', 'accrued liabilities', 'accrued expenses', 'short term debt', 'current debt', 'other current liabilities']},
+            {'title': 'NON-CURRENT LIABILITIES', 'keywords': ['non current liabilities', 'long term debt', 'long term borrowings', 'deferred tax liabilities', 'other liabilities']},
+            {'title': 'SHAREHOLDERS\' EQUITY', 'keywords': ['total equity', 'stockholders equity', 'shareholders equity', 'common stock', 'capital stock', 'additional paid in capital', 'paid in capital', 'retained earnings', 'accumulated earnings', 'treasury stock', 'other equity', 'comprehensive income', 'accumulated other comprehensive income']}
+        ]
+
+        cash_flow_sections = [
+            {'title': 'CASH AND CASH EQUIVALENTS', 'keywords': ['cash and cash equivalents', 'cash', 'cash equivalents']},
+            {'title': 'OPERATING ACTIVITIES', 'keywords': ['net income', 'depreciation and amortization', 'depreciation', 'stock based compensation', 'deferred taxes', 'changes in working capital', 'accounts receivable', 'inventory', 'accounts payable', 'other operating activities', 'net cash from operating activities']},
+            {'title': 'INVESTING ACTIVITIES', 'keywords': ['capital expenditures', 'capex', 'acquisitions', 'business acquisitions', 'investments', 'other investing activities', 'net cash from investing activities']},
+            {'title': 'FINANCING ACTIVITIES', 'keywords': ['debt issuance', 'borrowings', 'debt repayment', 'stock issuance', 'common stock issued', 'stock repurchases', 'treasury stock', 'dividends paid', 'other financing activities', 'net cash from financing activities']},
+            {'title': 'NET CHANGE IN CASH', 'keywords': ['net change in cash', 'cash at beginning of period', 'cash at end of period']}
+        ]
+
+        def categorize_item(label, gaap_name, sections):
+            search_text = (label + ' ' + gaap_name).lower()
+            
+            for section in sections:
+                for keyword in section['keywords']:
+                    if keyword.lower() in search_text:
+                        return section['title']
+            return None
+        
+        categorized_data = {
+            'income_statement': {},
+            'balance_sheet': {},
+            'cash_flow': {}
+        }        
+
+        for section in income_statement_sections:
+            categorized_data['income_statement'][section['title']] = []
+        for section in balance_sheet_sections:
+            categorized_data['balance_sheet'][section['title']] = []
+        for section in cash_flow_sections:
+            categorized_data['cash_flow'][section['title']] = []        
+        
+        for gaap_name in us_gaap.keys():
+            data = extract_data(gaap_name)
+            if not data:
+                continue
+            
+            label = us_gaap[gaap_name].get("label", gaap_name)
+            item = {
+                "type": label,
+                "gaap_name": gaap_name,
+                "values": data
+            }           
+            
+            section = categorize_item(label, gaap_name, income_statement_sections)
+            if section:
+                categorized_data['income_statement'][section].append(item)
+                continue
+            
+            section = categorize_item(label, gaap_name, balance_sheet_sections)
+            if section:
+                categorized_data['balance_sheet'][section].append(item)
+                continue
+            
+            section = categorize_item(label, gaap_name, cash_flow_sections)
+            if section:
+                categorized_data['cash_flow'][section].append(item)
+        
+        statements = categorized_data
+        
+        return {
+            "company": {
+                "name": company_facts.get("entityName"),
+                "cik": company_facts.get("cik")
+            },
+            "years": years,
+            "statements": statements
+        }
 
     def GetParsedData(self, cik: str, years: list[str]) -> dict:
         
@@ -274,6 +529,52 @@ class SECService:
         except Exception as e:
             print(f"❌ Error getting financial statements: {e}")
             return {}
+        
+
+    def ParseStatements(self, cik: str, report_type: str, period: str, filings: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Get financial statements using XBRL parsing - most accurate method"""
+        try:
+
+            if not filings:
+                print("❌ No filings found for XBRL parsing")
+                return {}
+            
+            # Look for the specific report type and period
+            target_accession = None
+            for filing in filings:
+                if isinstance(filing, dict):
+                    filing_type = filing.get('form', '')
+                    filing_date = filing.get('filingDate', '')
+                    
+                    # Check if this filing matches our criteria
+                    if (report_type.lower() in filing_type.lower() and 
+                        str(period) in filing_date):
+                        target_accession = filing.get('accessionNumber')
+                        break
+            
+            if not target_accession:
+                print(f"❌ No {report_type} filing found for period {period}")
+                return {}
+            
+            print(f"✅ Found target filing: {target_accession}")
+            
+            # Use XBRL parser to get financial statements
+            xbrl_data = self.xbrl_parser.get_financial_statements_xbrl(cik, target_accession)
+            
+            if xbrl_data:
+                print("✅ Successfully parsed XBRL data")
+                return xbrl_data
+            else:
+                print("❌ XBRL parsing failed")
+                return {}
+                
+        except Exception as e:
+            print(f"❌ Error in XBRL parsing: {e}")
+            return {}
+
+
+
+
     
     def get_financial_statements_xbrl(self, cik: str, report_type: str, period: str) -> Dict[str, Any]:
         """Get financial statements using XBRL parsing - most accurate method"""
@@ -810,3 +1111,353 @@ class SECService:
         except Exception as e:
             print(f"❌ Error getting peer group data: {e}")
             return {}
+        
+
+    def GetRatios(self, ciks: List[str], periods: List[str]) -> Dict:
+        """
+        Calculate financial ratios for multiple companies across multiple periods
+        
+        Args:
+            ciks: List of company CIKs (e.g., ["789019", "320193"])
+            periods: List of fiscal years as strings (e.g., ["2023", "2024"])
+        
+        Returns:
+            Dict with calculated ratios for each company and period
+        """
+        
+        def fetch_company_facts(cik: str) -> Dict:
+            """Fetch SEC company facts"""
+            url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik.zfill(10)}.json"
+            headers = {"User-Agent": "Financial Analysis Tool contact@example.com"}
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        
+        def extract_value(us_gaap: Dict, gaap_name: str, year: str) -> float:
+            """Extract a specific value for a given year"""
+            if gaap_name not in us_gaap:
+                return 0.0
+            
+            if "USD" not in us_gaap[gaap_name].get("units", {}):
+                # Try shares for per-share data
+                if "shares" in us_gaap[gaap_name].get("units", {}):
+                    for entry in us_gaap[gaap_name]["units"]["shares"]:
+                        if entry.get("form") in ["10-K", "10-K/A"] and str(entry.get("fy")) == year:
+                            return entry.get("val", 0.0)
+                return 0.0
+            
+            for entry in us_gaap[gaap_name]["units"]["USD"]:
+                if entry.get("form") in ["10-K", "10-K/A"] and str(entry.get("fy")) == year:
+                    return entry.get("val", 0.0)
+            
+            return 0.0
+        
+        def safe_divide(numerator: float, denominator: float, default: float = 0.0) -> float:
+            """Safely divide two numbers"""
+            if denominator == 0:
+                return default
+            return numerator / denominator
+        
+        def calculate_ratios_for_period(us_gaap: Dict, year: str) -> Dict:
+            """Calculate all ratios for a single period"""
+            
+            # Extract raw values - trying multiple possible GAAP names for each metric
+            revenue = (extract_value(us_gaap, "Revenues", year) or 
+                    extract_value(us_gaap, "RevenueFromContractWithCustomerExcludingAssessedTax", year) or
+                    extract_value(us_gaap, "SalesRevenueNet", year))
+            
+            cost_of_goods_sold = (extract_value(us_gaap, "CostOfRevenue", year) or
+                                extract_value(us_gaap, "CostOfGoodsAndServicesSold", year))
+            
+            gross_profit = extract_value(us_gaap, "GrossProfit", year)
+            if not gross_profit and revenue and cost_of_goods_sold:
+                gross_profit = revenue - cost_of_goods_sold
+            
+            operating_income = (extract_value(us_gaap, "OperatingIncomeLoss", year) or
+                            extract_value(us_gaap, "IncomeLossFromContinuingOperations", year))
+            
+            net_income = (extract_value(us_gaap, "NetIncomeLoss", year) or
+                        extract_value(us_gaap, "ProfitLoss", year))
+            
+            interest_expense = (extract_value(us_gaap, "InterestExpense", year) or
+                            extract_value(us_gaap, "InterestExpenseDebt", year))
+            
+            depreciation_amortization = (extract_value(us_gaap, "DepreciationDepletionAndAmortization", year) or
+                                        extract_value(us_gaap, "Depreciation", year))
+            
+            total_assets = (extract_value(us_gaap, "Assets", year) or
+                        extract_value(us_gaap, "AssetsCurrent", year))
+            
+            current_assets = extract_value(us_gaap, "AssetsCurrent", year)
+            
+            current_liabilities = extract_value(us_gaap, "LiabilitiesCurrent", year)
+            
+            total_liabilities = (extract_value(us_gaap, "Liabilities", year) or
+                                extract_value(us_gaap, "LiabilitiesAndStockholdersEquity", year) - 
+                                extract_value(us_gaap, "StockholdersEquity", year))
+            
+            total_equity = (extract_value(us_gaap, "StockholdersEquity", year) or
+                        extract_value(us_gaap, "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", year))
+            
+            cash = (extract_value(us_gaap, "CashAndCashEquivalentsAtCarryingValue", year) or
+                extract_value(us_gaap, "Cash", year))
+            
+            inventory = (extract_value(us_gaap, "InventoryNet", year) or
+                        extract_value(us_gaap, "Inventory", year))
+            
+            accounts_receivable = (extract_value(us_gaap, "AccountsReceivableNetCurrent", year) or
+                                extract_value(us_gaap, "AccountsReceivableNet", year))
+            
+            operating_cash_flow = (extract_value(us_gaap, "NetCashProvidedByUsedInOperatingActivities", year))
+            
+            capex = (extract_value(us_gaap, "PaymentsToAcquirePropertyPlantAndEquipment", year) or
+                    extract_value(us_gaap, "CapitalExpendituresIncurredButNotYetPaid", year))
+            
+            # Try to get shares outstanding
+            shares_outstanding = (extract_value(us_gaap, "CommonStockSharesOutstanding", year) or
+                                extract_value(us_gaap, "WeightedAverageNumberOfSharesOutstandingBasic", year) or
+                                extract_value(us_gaap, "CommonStockSharesIssued", year))
+            
+            # Store raw values
+            raw_values = {
+                "revenue": revenue,
+                "gross_profit": gross_profit,
+                "operating_income": operating_income,
+                "net_income": net_income,
+                "cost_of_goods_sold": cost_of_goods_sold,
+                "depreciation_amortization": depreciation_amortization,
+                "interest_expense": interest_expense,
+                "shares_outstanding": shares_outstanding,
+                "total_assets": total_assets,
+                "current_assets": current_assets,
+                "total_liabilities": total_liabilities,
+                "current_liabilities": current_liabilities,
+                "total_equity": total_equity,
+                "cash": cash,
+                "inventory": inventory,
+                "accounts_receivable": accounts_receivable,
+                "operating_cash_flow": operating_cash_flow,
+                "capex": capex
+            }
+            
+            # Calculate ratios
+            ratios = {}
+            
+            # Revenue (just the raw value)
+            ratios["revenue"] = {
+                "value": revenue,
+                "label": "Revenue",
+                "formatted": f"${revenue:.2f}M"
+            }
+            
+            # Profitability Ratios
+            ratios["gross_profit_margin"] = {
+                "value": round(safe_divide(gross_profit, revenue) * 100, 2),
+                "label": "Gross Profit Margin",
+                "formatted": f"{round(safe_divide(gross_profit, revenue) * 100, 2):.2f}%"
+            }
+            
+            ratios["operating_margin"] = {
+                "value": round(safe_divide(operating_income, revenue) * 100, 2),
+                "label": "Operating Margin",
+                "formatted": f"{round(safe_divide(operating_income, revenue) * 100, 2):.2f}%"
+            }
+            
+            ratios["net_margin"] = {
+                "value": round(safe_divide(net_income, revenue) * 100, 2),
+                "label": "Net Margin",
+                "formatted": f"{round(safe_divide(net_income, revenue) * 100, 2):.2f}%"
+            }
+            
+            # EBITDA Margin (using operating income as proxy if depreciation not available)
+            ebitda = operating_income + depreciation_amortization
+            ratios["ebitda_margin"] = {
+                "value": round(safe_divide(ebitda, revenue) * 100, 2),
+                "label": "EBITDA Margin",
+                "formatted": f"{round(safe_divide(ebitda, revenue) * 100, 2):.2f}%"
+            }
+            
+            # Liquidity Ratios
+            ratios["current_ratio"] = {
+                "value": round(safe_divide(current_assets, current_liabilities), 2),
+                "label": "Current Ratio",
+                "formatted": f"{round(safe_divide(current_assets, current_liabilities), 2):.2f}x"
+            }
+            
+            quick_assets = current_assets - inventory
+            ratios["quick_ratio"] = {
+                "value": round(safe_divide(quick_assets, current_liabilities), 2),
+                "label": "Quick Ratio",
+                "formatted": f"{round(safe_divide(quick_assets, current_liabilities), 2):.2f}x"
+            }
+            
+            ratios["cash_ratio"] = {
+                "value": round(safe_divide(cash, current_liabilities), 2),
+                "label": "Cash Ratio",
+                "formatted": f"{round(safe_divide(cash, current_liabilities), 2):.2f}x"
+            }
+            
+            # Leverage Ratios
+            # Note: Your reference shows 0.0 for debt ratios - might need long-term debt specifically
+            long_term_debt = extract_value(us_gaap, "LongTermDebt", year)
+            
+            ratios["debt_to_equity"] = {
+                "value": round(safe_divide(long_term_debt, total_equity), 2),
+                "label": "Debt to Equity",
+                "formatted": f"{round(safe_divide(long_term_debt, total_equity), 2):.2f}"
+            }
+            
+            total_capitalization = total_equity + long_term_debt
+            ratios["debt_to_total_capitalization"] = {
+                "value": round(safe_divide(long_term_debt, total_capitalization), 2),
+                "label": "Debt to Total Capitalization",
+                "formatted": f"{round(safe_divide(long_term_debt, total_capitalization), 2):.2f}"
+            }
+            
+            ratios["total_assets_to_equity"] = {
+                "value": round(safe_divide(total_assets, total_equity), 2),
+                "label": "Total Assets/Equity",
+                "formatted": f"{round(safe_divide(total_assets, total_equity), 2):.2f}"
+            }
+            
+            # Return Ratios
+            ratios["roe"] = {
+                "value": round(safe_divide(net_income, total_equity) * 100, 2),
+                "label": "Return on Equity (ROE)",
+                "formatted": f"{round(safe_divide(net_income, total_equity) * 100, 2):.2f}%"
+            }
+            
+            ratios["roa"] = {
+                "value": round(safe_divide(net_income, total_assets) * 100, 2),
+                "label": "Return on Assets (ROA)",
+                "formatted": f"{round(safe_divide(net_income, total_assets) * 100, 2):.2f}%"
+            }
+            
+            # ROIC = Net Income / (Total Equity + Long-term Debt)
+            invested_capital = total_equity + long_term_debt
+            ratios["roic"] = {
+                "value": round(safe_divide(net_income, invested_capital) * 100, 2),
+                "label": "Return on Invested Capital (ROIC)",
+                "formatted": f"{round(safe_divide(net_income, invested_capital) * 100, 2):.2f}%"
+            }
+            
+            # Coverage Ratios
+            if interest_expense > 0:
+                ratios["interest_coverage"] = {
+                    "value": round(safe_divide(operating_income, interest_expense), 2),
+                    "label": "Interest Coverage Ratio",
+                    "formatted": f"{round(safe_divide(operating_income, interest_expense), 2):.2f}x"
+                }
+            
+            # Efficiency Ratios
+            ratios["inventory_turnover"] = {
+                "value": round(safe_divide(cost_of_goods_sold, inventory), 2),
+                "label": "Inventory Turnover",
+                "formatted": f"{round(safe_divide(cost_of_goods_sold, inventory), 2):.2f}x"
+            }
+            
+            ratios["receivables_ratio"] = {
+                "value": round(safe_divide(accounts_receivable, revenue), 2),
+                "label": "Receivables Ratio",
+                "formatted": f"{round(safe_divide(accounts_receivable, revenue), 2):.2f}x"
+            }
+            
+            # Cash Flow Ratios
+            ratios["operating_cash_flow_to_net_income"] = {
+                "value": round(safe_divide(operating_cash_flow, net_income), 2),
+                "label": "Operating Cash Flow/Net Income",
+                "formatted": f"{round(safe_divide(operating_cash_flow, net_income), 2):.2f}"
+            }
+            
+            # Book Value (total equity in thousands)
+            ratios["book_value"] = {
+                "value": round(total_equity / 1000000, 0),
+                "label": "Book Value",
+                "formatted": f"${round(total_equity / 1000000, 2):.2f}"
+            }
+            
+            ratios["tangible_book_value"] = {
+                "value": round(total_equity / 1000000, 0),
+                "label": "Tangible Book Value",
+                "formatted": f"${round(total_equity / 1000000, 2):.2f}"
+            }
+            
+            # Working Capital
+            net_working_capital = current_assets - current_liabilities
+            ratios["net_working_capital_ratio"] = {
+                "value": round(safe_divide(net_working_capital, total_assets), 2),
+                "label": "Net Working Capital Ratio",
+                "formatted": f"{round(safe_divide(net_working_capital, total_assets), 2):.2f}x"
+            }
+            
+            # Per Share Data
+            ratios["earnings_per_share"] = {
+                "value": round(safe_divide(net_income, shares_outstanding), 2),
+                "label": "Earnings Per Share",
+                "formatted": f"${round(safe_divide(net_income, shares_outstanding), 2):.2f}"
+            }
+            
+            # Calculate metadata
+            non_zero_values = sum(1 for v in raw_values.values() if v != 0.0)
+            total_values = len(raw_values)
+            completeness = round((non_zero_values / total_values) * 100, 1)
+            
+            quality_score = "Excellent" if completeness >= 90 else "Good" if completeness >= 70 else "Fair" if completeness >= 50 else "Poor"
+            
+            return {
+                "ratios": ratios,
+                "raw_values": raw_values,
+                "calculation_metadata": {
+                    "total_ratios_calculated": len(ratios),
+                    "data_quality": {
+                        "completeness": completeness,
+                        "non_zero_values": non_zero_values,
+                        "total_values": total_values,
+                        "quality_score": quality_score
+                    }
+                }
+            }
+        
+        # Main execution
+        result = {
+            "calculated_ratios": {
+                "peer_group_ratios": {},
+                "summary": {
+                    "total_companies": len(ciks),
+                    "companies_with_data": 0
+                }
+            }
+        }
+        
+        for cik in ciks:
+            try:
+                company_facts = fetch_company_facts(cik)
+                company_name = company_facts.get("entityName", "Unknown")
+                us_gaap = company_facts["facts"]["us-gaap"]
+                
+                # Get ticker symbol (approximate from company name or use CIK)
+                ticker = cik  # Default to CIK if we can't determine ticker
+                
+                company_data = {
+                    "company_name": company_name,
+                    "periods": {}
+                }
+                
+                for period in periods:
+                    period_data = calculate_ratios_for_period(us_gaap, period)
+                    company_data["periods"][period] = period_data
+                
+                result["calculated_ratios"]["peer_group_ratios"][ticker] = company_data
+                result["calculated_ratios"]["summary"]["companies_with_data"] += 1
+                
+            except Exception as e:
+                print(f"Error processing CIK {cik}: {str(e)}")
+                continue
+        
+        return result
+
+
+
+
+        
+

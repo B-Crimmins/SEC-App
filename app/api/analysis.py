@@ -10,7 +10,7 @@ from services.financial_ratios import FinancialRatioCalculator
 from models.user import User
 from models.financial_report import FinancialReport
 from models.analysis import Analysis
-from schemas.analysis import AnalysisResponse, AnalysisRequest, TrendAnalysisRequest, TrendAnalysisResponse
+from schemas.analysis import AnalysisResponse, AnalysisRequest, TrendAnalysisRequest, TrendAnalysisResponse, TrendRequestTest
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
@@ -206,12 +206,40 @@ async def generate_analysis(
 
 @router.post("/test-this")
 async def generate_trend_analysis(
-    analysis_request: TrendAnalysisRequest,
+    analysis_request: TrendRequestTest,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     sec_service = SECService()    
-    thing = sec_service.GetParsedData("789019", ["2021", "2022", "2023"])
+    ticks: List[str] = []
+    
+    for t in analysis_request.ticker:
+        companies_data = sec_service.search_companies(t)
+        
+        if not companies_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Company with ticker {analysis_request.ticker} not found"
+            )
+        
+        ticks.append(str(companies_data[0]['cik']))
+    
+
+    # Needs the report type
+    r = sec_service.GetMultiParsedData(ticks, analysis_request.periods)
+
+    return r
+
+@router.post("/try-ratios")
+async def generate_trend_analysis(
+    analysis_request: TrendAnalysisRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+    
+    
+):
+    sec_service = SECService()    
+    thing = sec_service.GetRatios(["789019", "320193"], ["2020","2021"])
 
     return thing
 
@@ -331,8 +359,6 @@ async def generate_peer_group_analysis(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get real financial data for peer group comparison"""
-    print(f"🔍 Debug: Peer group analysis called by user {current_user.email}")
     # Check API usage limits
     user_service = UserService(db)
     usage = user_service.check_api_usage_limit(cast(int, current_user.id))
@@ -355,7 +381,6 @@ async def generate_peer_group_analysis(
     report_type = analysis_request.get('report_type', '10-K')
     periods = analysis_request.get('periods', [])
     
-    print(tickers)
     if not tickers or not periods:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -409,7 +434,7 @@ async def generate_peer_group_analysis(
     # Calculate financial ratios for peer group
     try:
         ratio_calculator = FinancialRatioCalculator()
-        calculated_ratios = ratio_calculator.calculate_peer_group_ratios(peer_group_data)
+        calculated_ratios = ratio_calculator.calculate_peer_group_ratios(peer_group_data)       
         
         # Generate AI analysis for peer group
         openai_service = OpenAIService()

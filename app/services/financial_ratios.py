@@ -33,6 +33,16 @@ class FinancialRatioCalculator:
             'net_working_capital_ratio': {'label': 'Net Working Capital Ratio', 'unit': '', 'category': 'Liquidity'},
             'earnings_per_share': {'label': 'Earnings Per Share', 'unit': '$', 'category': 'Profitability'}
         }
+
+   
+
+
+
+
+
+
+
+
     
     def calculate_single_company_ratios(self, financial_data: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate ratios for a single company"""

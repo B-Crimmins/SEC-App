@@ -7,6 +7,7 @@ import { filterUsGaap, organizeItemsBySections, TableDiff, usdFormatter } from "
 import { IconBrightnessDown, IconLogout, IconMoon, IconX } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import FinancialComparisonTable from "./Components/RatioAnalysis";
+import FinancialStatementViewer from "./Components/NewTrendTable";
 
 
 const AppHome = () => {
@@ -47,6 +48,8 @@ const AppHome = () => {
     const [ratioTable, setRatioTable] = useState({})
     const [activeTab, setActiveTab] = useState('Statements')
 
+    const [simpleTickerData, setSimpleTickerData] = useState([])
+
     const { colorScheme, setColorScheme, clearColorScheme } = useMantineColorScheme();
 
     const formatUSD = (amount) => {
@@ -57,18 +60,30 @@ const AppHome = () => {
     };
 
 
+    // const handleSearchClick = () => {
+    //     if(activeTab === 'Ratio Analysis'){
+    //         getRatioAnalysis();
+    //         return;
+    //     }
+    //     if (years.length > 1) {
+    //         console.log('here')
+    //         getMultiYearTicker();
+    //     }
+    //     else {
+    //         getTickerInfo();
+    //     }
+    // }
+
     const handleSearchClick = () => {
         if(activeTab === 'Ratio Analysis'){
             getRatioAnalysis();
             return;
         }
-        if (years.length > 1) {
-            console.log('here')
-            getMultiYearTicker();
-        }
-        else {
-            getTickerInfo();
-        }
+
+        if(activeTab === 'Statements'){
+            getSimpleTicker();
+            return;
+        }        
     }
 
     const getRatioAnalysis = () => {
@@ -80,6 +95,20 @@ const AppHome = () => {
         }).then((x) => {
             setRatioTable(x.data);
             setShowRatioTable(true);
+        })
+    }
+
+    const getSimpleTicker = () => {
+        let arrYear = years.map((x) => x.year);
+        let arrTicker = tickers.map((x) => x.ticker)
+        
+         axios.post(globalConfig.appUrl + '/api/analysis/test-this', {ticker: arrTicker, periods: arrYear, report_type: reportType}, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + sessionStorage.getItem('token')
+            }
+        }).then((x) => {
+            setSimpleTickerData(x.data);
         })
     }
 
@@ -411,7 +440,26 @@ const AppHome = () => {
                     </Tabs.List>
 
                     <Tabs.Panel value="Statements">
-                        {period === 1 &&
+                            <FinancialStatementViewer
+                             data={simpleTickerData}
+                            />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                        {/* {period === 1 &&
                             <>
                                 <Title pb={10} order={2}>Balance Statement</Title>
                                 {balanceTable?.map((x) => (
@@ -658,41 +706,8 @@ const AppHome = () => {
                                         </Table>
                                     </Paper>
                                 ))}
-
-
-                                {/* {fbalanceTable?.map((x) => (
-                            <>
-                                <Paper mb={10} withBorder shadow="xs" p="xl">
-                                    <Title order={4}>{x.title}</Title>
-                                    <Table highlightOnHover>
-                                        <Table.Thead>
-                                            <Table.Tr>
-                                                <Table.Th w={20} style={{backgroundColor:'blue'}}>Type</Table.Th>
-                                                {searchedYears?.map((x) => (
-                                                    <>
-                                                        <Table.Th ta='right' style={{backgroundColor:'red'}} w={50}>{x}</Table.Th>
-                                                    </>
-                                                ))}
-                                            </Table.Tr>
-                                        </Table.Thead>
-                                        <Table.Tbody>
-                                            {x.body?.map((x) => (
-                                                <>
-                                                        <Table.Tr>
-                                                    {x.map((v,i) => (
-                                                            <Table.Td ta={i === 0 ? 'left' : 'right'} w={20}>{v}</Table.Td>
-                                                        ))}
-                                                        </Table.Tr>
-
-                                                </>
-                                            ))}
-                                        </Table.Tbody>
-                                    </Table>
-                                </Paper>
                             </>
-                        ))} */}
-                            </>
-                        }
+                        } */}
                     </Tabs.Panel>
                     <Tabs.Panel value="Ratio Analysis">
                         <>
