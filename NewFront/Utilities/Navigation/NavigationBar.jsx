@@ -1,162 +1,46 @@
 import {
-  IconBook,
-  IconChartPie3,
-  IconChevronDown,
-  IconFileAnalytics,
-  IconCoin,
-  IconHistory,
-  IconBrandOpenai,
-  IconFingerprint,
-  IconAdjustments,
-  IconNotification,
-} from '@tabler/icons-react';
-import {
-  Anchor,
   Box,
   Burger,
   Button,
-  Center,
-  Collapse,
-  Divider,
   Drawer,
   Group,
-  HoverCard,
   ScrollArea,
-  SimpleGrid,
-  Text,
-  ThemeIcon,
   Title,
   UnstyledButton,
-  useMantineTheme,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { MantineLogo } from '@mantinex/mantine-logo';
 import classes from './navigation.module.css';
-import { useNavigate } from 'react-router-dom';
-
-const mockdata = [
-  {
-    icon: IconBrandOpenai,
-    title: 'AI Assistance',
-    description: 'Content analysis by Open AI',
-  },
-  {
-    icon: IconFileAnalytics,
-    title: 'Technical Displays',
-    description: 'Intuitive data tables for easy review',
-  },
-  {
-    icon: IconHistory,
-    title: 'SEC Archives',
-    description: 'Historical SEC information for viewing trends',
-  },
-  {
-    icon: IconAdjustments,
-    title: 'Ticker Comparison',
-    description: 'Compare different stock tickers across different years',
-  },
-  // {
-  //   icon: IconChartPie3,
-  //   title: 'Analytics',
-  //   description: 'This Pokémon uses its flying ability to quickly chase',
-  // },
-  // {
-  //   icon: IconNotification,
-  //   title: 'Notifications',
-  //   description: 'Combusken battles with the intensely hot flames it spews',
-  // },
-];
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const NavigationBar = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [drawerOpened, { toggle: toggleDrawer, close: closeDrawer }] = useDisclosure(false);
-  const [linksOpened, { toggle: toggleLinks }] = useDisclosure(false);
-  const theme = useMantineTheme();
 
-  const handleLoginClick = () => {
-    navigate('/login')
-  }
+  // Hide the marketing chrome inside the authenticated app shell.
+  if (location.pathname.startsWith('/AppHome')) return null;
 
-  const links = mockdata.map((item) => (
-    <UnstyledButton className={classes.subLink} key={item.title}>
-      <Group wrap="nowrap" align="flex-start">
-        <ThemeIcon size={34} variant="default" radius="md">
-          <item.icon size={22} color={theme.colors.blue[6]} />
-        </ThemeIcon>
-        <div>
-          <Text size="sm" fw={500}>
-            {item.title}
-          </Text>
-          <Text size="xs" c="dimmed">
-            {item.description}
-          </Text>
-        </div>
-      </Group>
-    </UnstyledButton>
-  ));
+  const goHome = () => navigate('/');
+  const goLogin = () => {
+    closeDrawer();
+    navigate('/login');
+  };
 
   return (
     <Box pb={70}>
       <header className={classes.header}>
         <Group justify="space-between" h="100%">
-          <Title>SEC-Wrapper</Title>
-
-          <Group h="100%" gap={0} visibleFrom="sm">
-            <a href="/" className={classes.link}>
-              Home
-            </a>
-            <HoverCard width={600} position="bottom" radius="md" shadow="md" withinPortal>
-              <HoverCard.Target>
-                <a href="#" className={classes.link}>
-                  <Center inline>
-                    <Box component="span" mr={5}>
-                      Features
-                    </Box>
-                    <IconChevronDown size={16} color={theme.colors.blue[6]} />
-                  </Center>
-                </a>
-              </HoverCard.Target>
-
-              <HoverCard.Dropdown style={{ overflow: 'hidden' }}>
-                <Group justify="space-between" px="md">
-                  <Text fw={500}>Features</Text>
-                  <Anchor href="#" fz="xs">
-                    View all
-                  </Anchor>
-                </Group>
-
-                <Divider my="sm" />
-
-                <SimpleGrid cols={2} spacing={0}>
-                  {links}
-                </SimpleGrid>
-
-                <div className={classes.dropdownFooter}>
-                  <Group justify="space-between">
-                    <div>
-                      <Text fw={500} fz="sm">
-                        Get started
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        Get reports and start analyzing the latest 
-                      </Text>
-                    </div>
-                    <Button variant="default">Get started</Button>
-                  </Group>
-                </div>
-              </HoverCard.Dropdown>
-            </HoverCard>
-            <a href="#" className={classes.link}>
-              Pricing
-            </a>            
-          </Group>
+          <UnstyledButton onClick={goHome} aria-label="Intrinsiq home">
+            <Title order={3} c="var(--mantine-color-intrinsiq-4)" style={{ letterSpacing: '0.0em' }}>
+              Intrinsiq
+            </Title>
+          </UnstyledButton>
 
           <Group visibleFrom="sm">
-            <Button 
-            variant="default"
-            onClick={handleLoginClick}
-            >Log in</Button>
-            <Button>Sign up</Button>
+            <Button variant="subtle" color="gray" onClick={goLogin}>
+              Log in
+            </Button>
+            <Button onClick={goLogin}>Sign up</Button>
           </Group>
 
           <Burger opened={drawerOpened} onClick={toggleDrawer} hiddenFrom="sm" />
@@ -166,44 +50,21 @@ const NavigationBar = () => {
       <Drawer
         opened={drawerOpened}
         onClose={closeDrawer}
-        size="100%"
+        size="200%"
         padding="md"
-        title="Navigation"
+        title="Intrinsiq"
         hiddenFrom="sm"
         zIndex={1000000}
       >
-        <ScrollArea h="calc(100vh - 80px" mx="-md">
-          <Divider my="sm" />
-
-          <a href="#" className={classes.link}>
-            Home
-          </a>
-          <UnstyledButton className={classes.link} onClick={toggleLinks}>
-            <Center inline>
-              <Box component="span" mr={5}>
-                Features
-              </Box>
-              <IconChevronDown size={16} color={theme.colors.blue[6]} />
-            </Center>
-          </UnstyledButton>
-          <Collapse in={linksOpened}>{links}</Collapse>
-          <a href="#" className={classes.link}>
-            Learn
-          </a>
-          <a href="#" className={classes.link}>
-            Academy
-          </a>
-
-          <Divider my="sm" />
-
+        <ScrollArea h="calc(100vh - 80px)" mx="-md">
           <Group justify="center" grow pb="xl" px="md">
-            <Button variant="default">Log in</Button>
-            <Button>Sign up</Button>
+            <Button variant="default" onClick={goLogin}>Log in</Button>
+            <Button onClick={goLogin}>Sign up</Button>
           </Group>
         </ScrollArea>
       </Drawer>
     </Box>
   );
-}
+};
 
-export default NavigationBar
+export default NavigationBar;

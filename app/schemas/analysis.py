@@ -73,4 +73,34 @@ class TrendAnalysisResponse(BaseModel):
     future_outlook: Optional[str] = ""
     openai_model_used: Optional[str] = ""
     tokens_used: Optional[int] = 0
-    processing_time: Optional[int] = 0 
+    processing_time: Optional[int] = 0
+
+
+class DCFRequest(BaseModel):
+    ticker: str
+    report_type: str
+    period: str
+    discount_rate: float
+    interim_growth_rate: float
+    terminal_growth_rate: float
+    forecast_periods: int = 5
+    stock_price: float
+
+
+class DCFResponse(BaseModel):
+    ticker: str
+    company_name: str
+    report_type: str
+    period: str
+    latest_year: int
+    discount_rate: float
+    interim_growth_rate: float
+    terminal_growth_rate: float
+    forecast_periods: int
+    stock_price: float
+    projected_fcf: List[float]
+    present_values: List[float]
+    terminal_value: float
+    enterprise_value: float
+    equity_value: float
+    per_share_value: float

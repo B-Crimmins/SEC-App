@@ -17,6 +17,7 @@ import { useNavigate } from 'react-router-dom';
 import globalConfig from '../../global/globalConfig.json'
 import { useForm } from '@mantine/form';
 import { upperFirst, useToggle } from '@mantine/hooks';
+import { IconSearch } from '@tabler/icons-react';
 
 function LoginPage() {
   const [count, setCount] = useState(0)
@@ -59,10 +60,14 @@ function LoginPage() {
     <>
       <Container size={500} my={100}>
         <Paper radius="md" p="lg" withBorder>
-          <Text size="lg" fw={500}>
-            Welcome to SEC-Wrapper
-          </Text>
+          <Group gap="xs" align="center">
+            <IconSearch size={22} stroke={2.2} />
+            <Text size="lg" fw={500}>
+              Login to Intrinsiq
+            </Text>
+          </Group>
           <Divider label="Please login or register below" labelPosition="center" my="lg" />
+          <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
           <Stack>
             {/* <TextInput
               label="Name"
@@ -127,11 +132,11 @@ function LoginPage() {
             <Button
               type="submit"
               radius="xl"
-              onClick={handleLogin}
               >
               {isRegister ? "Register" : "Login"}
-            </Button>            
+            </Button>
           </Group>
+          </form>
         </Paper>
       </Container>
     </>

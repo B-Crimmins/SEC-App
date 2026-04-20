@@ -7,10 +7,12 @@ from services.openai_service import OpenAIService
 from services.sec_service import SECService
 from services.user_service import UserService
 from services.financial_ratios import FinancialRatioCalculator
+from services.segment_analysis import SegmentAnalysisService
+from services.common_size import calculate_common_size_multi_period
 from models.user import User
 from models.financial_report import FinancialReport
 from models.analysis import Analysis
-from schemas.analysis import AnalysisResponse, AnalysisRequest, TrendAnalysisRequest, TrendAnalysisResponse, TrendRequestTest
+from schemas.analysis import AnalysisResponse, AnalysisRequest, TrendAnalysisRequest, TrendAnalysisResponse, TrendRequestTest, DCFRequest, DCFResponse
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
@@ -353,6 +355,138 @@ async def generate_trend_analysis(
         )
 
 
+@router.post("/revenue-segments", response_model=Dict[str, Any])
+async def get_revenue_segments(
+    analysis_request: dict,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Revenue segment breakdown (product, geography, business segment) per period.
+
+    Request body: { "ticker": "AAPL", "report_type": "10-K", "periods": ["2023","2024"] }
+    """
+    ticker = (analysis_request.get("ticker") or "").strip()
+    report_type = analysis_request.get("report_type", "10-K")
+    periods = analysis_request.get("periods", [])
+
+    if not ticker or not periods:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ticker and periods are required",
+        )
+
+    sec_service = SECService()
+    companies_data = sec_service.search_companies(ticker)
+    if not companies_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Company with ticker {ticker} not found",
+        )
+
+    company_data = next(
+        (c for c in companies_data if c['ticker'].upper() == ticker.upper()),
+        None,
+    )
+    if not company_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Company with ticker {ticker} not found",
+        )
+
+    segment_service = SegmentAnalysisService(sec_service)
+    segments = segment_service.get_revenue_segments_multi_period(
+        company_data['cik'], report_type, periods
+    )
+
+    return {
+        "ticker": ticker.upper(),
+        "company_name": company_data['company_name'],
+        "cik": company_data['cik'],
+        "report_type": report_type,
+        "periods": segments["periods"],
+        "by_period": segments["by_period"],
+    }
+
+
+@router.post("/common-size", response_model=Dict[str, Any])
+async def get_common_size(
+    analysis_request: dict,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Common-size income statement ratios across one or more peer tickers.
+
+    Request body: { "tickers": ["AAPL","MSFT"], "report_type": "10-K", "periods": ["2023","2024"] }
+    Accepts legacy single `ticker` key too.
+    """
+    raw_tickers = analysis_request.get("tickers")
+    if not raw_tickers:
+        single = analysis_request.get("ticker")
+        raw_tickers = [single] if single else []
+
+    tickers = [t.strip().upper() for t in raw_tickers if t and t.strip()]
+    report_type = analysis_request.get("report_type", "10-K")
+    periods = analysis_request.get("periods", [])
+
+    if not tickers or not periods:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tickers and periods are required",
+        )
+
+    sec_service = SECService()
+    ratio_calculator = FinancialRatioCalculator()
+
+    companies_out: List[Dict[str, Any]] = []
+    covered_years: List[str] = []
+
+    for ticker in tickers:
+        companies_data = sec_service.search_companies(ticker)
+        company_data = next(
+            (c for c in (companies_data or []) if c['ticker'].upper() == ticker),
+            None,
+        )
+        if not company_data:
+            continue
+
+        result = calculate_common_size_multi_period(
+            sec_service, ratio_calculator, company_data['cik'], report_type, periods
+        )
+
+        # Reshape by_period -> {year: {ratios: {...}}} so the frontend mirrors
+        # the RatioAnalysis component's data contract.
+        periods_payload: Dict[str, Any] = {}
+        for year, ratios in result["by_period"].items():
+            periods_payload[year] = {"ratios": ratios}
+
+        for year in result["periods"]:
+            if year not in covered_years:
+                covered_years.append(year)
+
+        companies_out.append({
+            "ticker": ticker,
+            "company_name": company_data['company_name'],
+            "cik": company_data['cik'],
+            "periods": periods_payload,
+        })
+
+    if not companies_out:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No companies found for given tickers",
+        )
+
+    # Preserve requested order where possible; fall back to covered order.
+    years_sorted = [p for p in periods if p in covered_years] or covered_years
+
+    return {
+        "tickers": tickers,
+        "report_type": report_type,
+        "years": years_sorted,
+        "companies": companies_out,
+    }
+
+
 @router.post("/peer-group-analysis", response_model=Dict[str, Any])
 async def generate_peer_group_analysis(
     analysis_request: dict,  # Will contain tickers, report_type, periods
@@ -454,7 +588,7 @@ async def generate_peer_group_analysis(
             }
         
         # Generate peer group analysis
-        ai_analysis = openai_service.analyze_peer_group(peer_group_data)
+        # ai_analysis = openai_service.analyze_peer_group(peer_group_data)
         
         return {
             # "peer_group_data": peer_group_data,
@@ -562,4 +696,127 @@ async def get_financial_ratios(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error calculating ratios: {str(e)}"
+        )
+
+
+@router.post("/dcf", response_model=DCFResponse)
+async def calculate_dcf(
+    dcf_request: DCFRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Calculate DCF valuation for a company"""
+    # Check API usage limits
+    user_service = UserService(db)
+    usage = user_service.check_api_usage_limit(cast(int, current_user.id))
+    
+    if usage['exceeded']:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"API usage limit exceeded. Used: {usage['current_usage']}/{usage['limit']}"
+        )
+    
+    # Get or create financial report
+    sec_service = SECService()
+    companies_data = sec_service.search_companies(dcf_request.ticker)
+    
+    if not companies_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Company with ticker {dcf_request.ticker} not found"
+        )
+    
+    # Find the exact match
+    company_data = None
+    for comp in companies_data:
+        if comp['ticker'].upper() == dcf_request.ticker.upper():
+            company_data = comp
+            break
+    
+    if not company_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Company with ticker {dcf_request.ticker} not found"
+        )
+    
+    # Get or create financial report
+    financial_report = db.query(FinancialReport).filter(
+        FinancialReport.user_id == current_user.id,
+        FinancialReport.ticker == dcf_request.ticker.upper(),
+        FinancialReport.report_type == dcf_request.report_type,
+        FinancialReport.period == dcf_request.period
+    ).first()
+    
+    if not financial_report:
+        # Get financial data from SEC
+        financial_data = sec_service.get_financial_statements(
+            company_data['cik'],
+            dcf_request.report_type,
+            dcf_request.period
+        )
+        
+        if not financial_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Financial data not found for {dcf_request.ticker} {dcf_request.report_type} {dcf_request.period}"
+            )
+        
+        # Create financial report
+        financial_report = FinancialReport(
+            user_id=current_user.id,
+            ticker=dcf_request.ticker.upper(),
+            company_name=company_data['company_name'],
+            report_type=dcf_request.report_type,
+            period=dcf_request.period,
+            income_statement=financial_data.get('income_statement', {}),
+            balance_sheet=financial_data.get('balance_sheet', {}),
+            cash_flow=financial_data.get('cash_flow', {}),
+            raw_data=str(financial_data)
+        )
+        
+        db.add(financial_report)
+        db.commit()
+        db.refresh(financial_report)
+    
+    # Calculate DCF
+    ratio_calculator = FinancialRatioCalculator()
+    financial_data = {
+        'income_statement': financial_report.income_statement,
+        'balance_sheet': financial_report.balance_sheet,
+        'cash_flow': financial_report.cash_flow
+    }
+    
+    try:
+        dcf_result = ratio_calculator.present_values_fcf(
+            financial_data,
+            dcf_request.discount_rate,
+            dcf_request.interim_growth_rate,
+            dcf_request.terminal_growth_rate,
+            dcf_request.forecast_periods,
+            stock_price=dcf_request.stock_price,
+        )
+
+        return DCFResponse(
+            ticker=financial_report.ticker,
+            company_name=financial_report.company_name,
+            report_type=financial_report.report_type,
+            period=financial_report.period,
+            latest_year=dcf_result['latest_year'],
+            discount_rate=dcf_request.discount_rate,
+            interim_growth_rate=dcf_request.interim_growth_rate,
+            terminal_growth_rate=dcf_request.terminal_growth_rate,
+            forecast_periods=dcf_request.forecast_periods,
+            stock_price=dcf_request.stock_price,
+            projected_fcf=dcf_result['projected_fcf'],
+            present_values=dcf_result['present_values'],
+            terminal_value=dcf_result['terminal_value'],
+            enterprise_value=dcf_result['enterprise_value'],
+            equity_value=dcf_result['equity_value'],
+            per_share_value=dcf_result['per_share_value']
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error calculating DCF: {str(e)}"
         ) 

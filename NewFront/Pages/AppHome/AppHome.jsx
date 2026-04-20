@@ -1,13 +1,16 @@
-import { AppShell, Box, Button, Group, Paper, Select, SimpleGrid, Stack, Table, Tabs, TextInput, Title, Tooltip, Typography, useMantineColorScheme } from "@mantine/core";
+import { AppShell, Box, Button, Group, Paper, Select, SimpleGrid, Stack, Table, Tabs, TextInput, Title, Tooltip, Typography, UnstyledButton, useMantineColorScheme } from "@mantine/core";
 import SideBar from "./Components/SideBar";
 import axios from "axios";
 import globalConfig from '../../global/globalConfig.json'
 import { useState } from "react";
 import { filterUsGaap, organizeItemsBySections, TableDiff, usdFormatter } from "../../Helpers/TableHelpers";
-import { IconBrightnessDown, IconLogout, IconMoon, IconX } from "@tabler/icons-react";
+import { IconBrightnessDown, IconLogout, IconMoon, IconSearch, IconX } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import FinancialComparisonTable from "./Components/RatioAnalysis";
 import FinancialStatementViewer from "./Components/NewTrendTable";
+import DCFAnalysis from "./Components/DCFAnalysis";
+import Segments from "./Components/Segments";
+import CommonSize from "./Components/CommonSize";
 
 
 const AppHome = () => {
@@ -46,9 +49,12 @@ const AppHome = () => {
     const [fbalanceTable, fsetBalanceTable] = useState([]);
     const [fcashflowTable, fsetcashFlowTable] = useState([]);
     const [ratioTable, setRatioTable] = useState({})
-    const [activeTab, setActiveTab] = useState('Statements')
+    const [activeTab, setActiveTab] = useState('Balance Sheet')
 
     const [simpleTickerData, setSimpleTickerData] = useState([])
+    const [segmentsData, setSegmentsData] = useState(null);
+    const [commonSizeData, setCommonSizeData] = useState(null);
+    const STATEMENT_TABS = ['Balance Sheet', 'Income Statement', 'Cash Flow Statement'];
 
     const { colorScheme, setColorScheme, clearColorScheme } = useMantineColorScheme();
 
@@ -80,21 +86,126 @@ const AppHome = () => {
             return;
         }
 
-        if(activeTab === 'Statements'){
+        if(activeTab === 'Segments'){
+            getSegments();
+            return;
+        }
+
+        if(activeTab === 'Common Size'){
+            getCommonSize();
+            return;
+        }
+
+        if(STATEMENT_TABS.includes(activeTab)){
             getSimpleTicker();
             return;
-        }        
+        }
+    }
+
+    const getSegments = () => {
+        const firstTicker = tickers[0]?.ticker?.trim();
+        const yearList = years.map((x) => x.year).filter(y => y.trim() !== '');
+
+        if (!firstTicker) {
+            alert('Please enter a ticker');
+            return;
+        }
+        if (yearList.length === 0) {
+            alert('Please enter at least one year');
+            return;
+        }
+        if (!reportType) {
+            alert('Please select a report type');
+            return;
+        }
+
+        axios.post(globalConfig.appUrl + '/api/analysis/revenue-segments', {
+            ticker: firstTicker,
+            report_type: reportType,
+            periods: yearList,
+        }, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + sessionStorage.getItem('token'),
+            }
+        }).then((response) => {
+            setSegmentsData(response.data);
+        }).catch((error) => {
+            console.error('Error fetching segment analysis:', error);
+            alert('Error: ' + (error.response?.data?.detail || error.message));
+        });
+    }
+
+    const getCommonSize = () => {
+        const tickerList = tickers.map((x) => x.ticker).filter(t => t.trim() !== '');
+        const yearList = years.map((x) => x.year).filter(y => y.trim() !== '');
+
+        if (tickerList.length === 0) {
+            alert('Please enter at least one ticker');
+            return;
+        }
+        if (yearList.length === 0) {
+            alert('Please enter at least one year');
+            return;
+        }
+        if (!reportType) {
+            alert('Please select a report type');
+            return;
+        }
+
+        axios.post(globalConfig.appUrl + '/api/analysis/common-size', {
+            tickers: tickerList,
+            report_type: reportType,
+            periods: yearList,
+        }, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + sessionStorage.getItem('token'),
+            }
+        }).then((response) => {
+            setCommonSizeData(response.data);
+        }).catch((error) => {
+            console.error('Error fetching common size:', error);
+            alert('Error: ' + (error.response?.data?.detail || error.message));
+        });
     }
 
     const getRatioAnalysis = () => {
-        axios.post(globalConfig.appUrl + '/api/analysis/peer-group-analysis', { tickers: tickers.map((x) => x.ticker), report_type: reportType, periods: years.map((x) => x.year) }, {
+        // Validate inputs
+        const tickerList = tickers.map((x) => x.ticker).filter(t => t.trim() !== '');
+        const yearList = years.map((x) => x.year).filter(y => y.trim() !== '');
+        
+        if (tickerList.length === 0) {
+            alert('Please enter at least one ticker');
+            return;
+        }
+        if (yearList.length === 0) {
+            alert('Please enter at least one year');
+            return;
+        }
+        if (!reportType) {
+            alert('Please select a report type');
+            return;
+        }
+
+        console.log('Calling peer-group-analysis with:', { tickers: tickerList, report_type: reportType, periods: yearList });
+        
+        axios.post(globalConfig.appUrl + '/api/analysis/peer-group-analysis', { 
+            tickers: tickerList, 
+            report_type: reportType, 
+            periods: yearList 
+        }, {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + sessionStorage.getItem('token')
             }
-        }).then((x) => {
-            setRatioTable(x.data);
+        }).then((response) => {
+            console.log('Ratio analysis response:', response.data);
+            setRatioTable(response.data);
             setShowRatioTable(true);
+        }).catch((error) => {
+            console.error('Error fetching ratio analysis:', error);
+            alert('Error: ' + (error.response?.data?.detail || error.message));
         })
     }
 
@@ -344,9 +455,14 @@ const AppHome = () => {
             <AppShell.Header>
                 <Box style={{ alignContent: 'center', height: '100%' }}>
                     <Group pr={10} pl={10} justify="space-between">
-                        <Title>
-                            SEC-APP
-                        </Title>
+                        <UnstyledButton onClick={() => navigate('/')} aria-label="Intrinsiq home">
+                            <Group gap="xs" align="center">
+                                <IconSearch size={28} stroke={2.2} />
+                                <Title>
+                                    Intrinsiq
+                                </Title>
+                            </Group>
+                        </UnstyledButton>
                         <Tooltip label="Logout">
                             <Button variant="default">
                                 <IconLogout
@@ -431,288 +547,64 @@ const AppHome = () => {
             <AppShell.Main>
                 <Tabs value={activeTab} onChange={setActiveTab}>
                     <Tabs.List>
-                        <Tabs.Tab value="Statements">
-                            Statements
+                        <Tabs.Tab value="Balance Sheet">
+                            Balance Sheet
+                        </Tabs.Tab>
+                        <Tabs.Tab value="Income Statement">
+                            Income Statement
+                        </Tabs.Tab>
+                        <Tabs.Tab value="Cash Flow Statement">
+                            Cash Flow Statement
                         </Tabs.Tab>
                         <Tabs.Tab value="Ratio Analysis">
                             Ratio Analysis
                         </Tabs.Tab>
+                        <Tabs.Tab value="Segments">
+                            Segments
+                        </Tabs.Tab>
+                        <Tabs.Tab value="Common Size">
+                            Common Size
+                        </Tabs.Tab>
+                        <Tabs.Tab value="DCF">
+                            DCF
+                        </Tabs.Tab>
                     </Tabs.List>
 
-                    <Tabs.Panel value="Statements">
-                            <FinancialStatementViewer
-                             data={simpleTickerData}
-                            />
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                        {/* {period === 1 &&
-                            <>
-                                <Title pb={10} order={2}>Balance Statement</Title>
-                                {balanceTable?.map((x) => (
-                                    <>
-                                        <Paper mb={10} withBorder shadow="xs" p="xl">
-                                            <Title order={4}>{x.title}</Title>
-                                            <Table highlightOnHover>
-                                                <Table.Thead>
-                                                    <Table.Tr>
-                                                        <Table.Th w={50}>Type</Table.Th>
-                                                        <Table.Th ta='right' w={20}>Amount</Table.Th>
-                                                    </Table.Tr>
-                                                </Table.Thead>
-                                                <Table.Tbody>
-                                                    {x.body?.map((x) => (
-                                                        <>
-                                                            <Table.Tr>
-                                                                <Table.Td w={50}>{x[0]}</Table.Td>
-                                                                <Table.Td ta='right' w={20}>{x[1]}</Table.Td>
-                                                            </Table.Tr>
-                                                        </>
-                                                    ))}
-                                                </Table.Tbody>
-                                            </Table>
-                                        </Paper>
-                                    </>
-                                ))}
-                                <Title pb={10} order={2}>Cash Flow</Title>
-                                {cashflowTable?.map((x) => (
-                                    <>
-                                        <Paper mb={10} withBorder shadow="xs" p="xl">
-                                            <Title order={4}>{x.title}</Title>
-                                            <Table highlightOnHover>
-                                                <Table.Thead>
-                                                    <Table.Tr>
-                                                        <Table.Th w={50}>Type</Table.Th>
-                                                        <Table.Th ta='right' w={20}>Amount</Table.Th>
-                                                    </Table.Tr>
-                                                </Table.Thead>
-                                                <Table.Tbody>
-                                                    {x.body?.map((x) => (
-                                                        <>
-                                                            <Table.Tr>
-                                                                <Table.Td w={50}>{x[0]}</Table.Td>
-                                                                <Table.Td ta='right' w={20}>{x[1]}</Table.Td>
-                                                            </Table.Tr>
-                                                        </>
-                                                    ))}
-                                                </Table.Tbody>
-                                            </Table>
-                                        </Paper>
-                                    </>
-                                ))}
-                                <Title pb={10} order={2}>Income Statement</Title>
-                                {incomeTable?.map((x) => (
-                                    <>
-                                        <Paper mb={10} withBorder shadow="xs" p="xl">
-                                            <Title order={4}>{x.title}</Title>
-                                            <Table highlightOnHover>
-                                                <Table.Thead>
-                                                    <Table.Tr>
-                                                        <Table.Th w={50}>Type</Table.Th>
-                                                        <Table.Th ta='right' w={20}>Amount</Table.Th>
-                                                    </Table.Tr>
-                                                </Table.Thead>
-                                                <Table.Tbody>
-                                                    {x.body?.map((x) => (
-                                                        <>
-                                                            <Table.Tr>
-                                                                <Table.Td w={50}>{x[0]}</Table.Td>
-                                                                <Table.Td ta='right' w={20}>{x[1]}</Table.Td>
-                                                            </Table.Tr>
-                                                        </>
-                                                    ))}
-                                                </Table.Tbody>
-                                            </Table>
-                                        </Paper>
-                                    </>
-                                ))}
-                            </>
-                        }
-
-                        {period === 2 &&
-                            <>
-                                <Title pb={10} order={2}>Balance Statement</Title>
-                                {fbalanceTable?.map((item, index) => (
-                                    <Paper key={index} mb={10} withBorder shadow="xs" p="xl">
-                                        <Title order={4}>{item.title}</Title>
-                                        <Table highlightOnHover tableLayout="fixed">
-                                            <Table.Thead>
-                                                <Table.Tr>
-                                                    <Table.Th
-                                                        style={{
-                                                            width: '100px',
-                                                            minWidth: '50px',
-                                                            whiteSpace: 'normal',
-                                                            wordBreak: 'break-word',
-                                                        }}
-                                                    >
-                                                        Type
-                                                    </Table.Th>
-                                                    {searchedYears?.map((year) => (
-                                                        <Table.Th
-                                                            key={year}
-                                                            ta="right"
-                                                            style={{
-                                                                width: '150px',
-                                                                minWidth: '150px',
-                                                            }}
-                                                        >
-                                                            {year}
-                                                        </Table.Th>
-                                                    ))}
-                                                </Table.Tr>
-                                            </Table.Thead>
-                                            <Table.Tbody>
-                                                {item.body?.map((row, rowIndex) => (
-                                                    <Table.Tr key={rowIndex}>
-                                                        {row.map((cell, colIndex) => (
-                                                            <Table.Td
-                                                                key={colIndex}
-                                                                ta={colIndex === 0 ? 'left' : 'right'}
-                                                                style={{
-                                                                    ...(colIndex === 0 && {
-                                                                        whiteSpace: 'normal',
-                                                                        wordBreak: 'break-word',
-                                                                    }),
-                                                                }}
-                                                            >
-                                                                {cell}
-                                                            </Table.Td>
-                                                        ))}
-                                                    </Table.Tr>
-                                                ))}
-                                            </Table.Tbody>
-                                        </Table>
-                                    </Paper>
-                                ))}
-                                <Title pb={10} order={2}>Cash Flow</Title>
-                                {fcashflowTable?.map((item, index) => (
-                                    <Paper key={index} mb={10} withBorder shadow="xs" p="xl">
-                                        <Title order={4}>{item.title}</Title>
-                                        <Table highlightOnHover tableLayout="fixed">
-                                            <Table.Thead>
-                                                <Table.Tr>
-                                                    <Table.Th
-                                                        style={{
-                                                            width: '100px',
-                                                            minWidth: '50px',
-                                                            whiteSpace: 'normal',
-                                                            wordBreak: 'break-word',
-                                                        }}
-                                                    >
-                                                        Type
-                                                    </Table.Th>
-                                                    {searchedYears?.map((year) => (
-                                                        <Table.Th
-                                                            key={year}
-                                                            ta="right"
-                                                            style={{
-                                                                width: '150px',
-                                                                minWidth: '150px',
-                                                            }}
-                                                        >
-                                                            {year}
-                                                        </Table.Th>
-                                                    ))}
-                                                </Table.Tr>
-                                            </Table.Thead>
-                                            <Table.Tbody>
-                                                {item.body?.map((row, rowIndex) => (
-                                                    <Table.Tr key={rowIndex}>
-                                                        {row.map((cell, colIndex) => (
-                                                            <Table.Td
-                                                                key={colIndex}
-                                                                ta={colIndex === 0 ? 'left' : 'right'}
-                                                                style={{
-                                                                    ...(colIndex === 0 && {
-                                                                        whiteSpace: 'normal',
-                                                                        wordBreak: 'break-word',
-                                                                    }),
-                                                                }}
-                                                            >
-                                                                {cell}
-                                                            </Table.Td>
-                                                        ))}
-                                                    </Table.Tr>
-                                                ))}
-                                            </Table.Tbody>
-                                        </Table>
-                                    </Paper>
-                                ))}
-                                <Title pb={10} order={2}>Income Statement</Title>
-                                {fincomeTable?.map((item, index) => (
-                                    <Paper key={index} mb={10} withBorder shadow="xs" p="xl">
-                                        <Title order={4}>{item.title}</Title>
-                                        <Table highlightOnHover tableLayout="fixed">
-                                            <Table.Thead>
-                                                <Table.Tr>
-                                                    <Table.Th
-                                                        style={{
-                                                            width: '100px',
-                                                            minWidth: '50px',
-                                                            whiteSpace: 'normal',
-                                                            wordBreak: 'break-word',
-                                                        }}
-                                                    >
-                                                        Type
-                                                    </Table.Th>
-                                                    {searchedYears?.map((year) => (
-                                                        <Table.Th
-                                                            key={year}
-                                                            ta="right"
-                                                            style={{
-                                                                width: '150px',
-                                                                minWidth: '150px',
-                                                            }}
-                                                        >
-                                                            {year}
-                                                        </Table.Th>
-                                                    ))}
-                                                </Table.Tr>
-                                            </Table.Thead>
-                                            <Table.Tbody>
-                                                {item.body?.map((row, rowIndex) => (
-                                                    <Table.Tr key={rowIndex}>
-                                                        {row.map((cell, colIndex) => (
-                                                            <Table.Td
-                                                                key={colIndex}
-                                                                ta={colIndex === 0 ? 'left' : 'right'}
-                                                                style={{
-                                                                    ...(colIndex === 0 && {
-                                                                        whiteSpace: 'normal',
-                                                                        wordBreak: 'break-word',
-                                                                    }),
-                                                                }}
-                                                            >
-                                                                {cell}
-                                                            </Table.Td>
-                                                        ))}
-                                                    </Table.Tr>
-                                                ))}
-                                            </Table.Tbody>
-                                        </Table>
-                                    </Paper>
-                                ))}
-                            </>
-                        } */}
+                    <Tabs.Panel value="Balance Sheet">
+                        <FinancialStatementViewer
+                            data={simpleTickerData}
+                            statementType="balance_sheet"
+                        />
+                    </Tabs.Panel>
+                    <Tabs.Panel value="Income Statement">
+                        <FinancialStatementViewer
+                            data={simpleTickerData}
+                            statementType="income_statement"
+                        />
+                    </Tabs.Panel>
+                    <Tabs.Panel value="Cash Flow Statement">
+                        <FinancialStatementViewer
+                            data={simpleTickerData}
+                            statementType="cash_flow"
+                        />
                     </Tabs.Panel>
                     <Tabs.Panel value="Ratio Analysis">
                         <>
                             {showRatioTable && <FinancialComparisonTable data={ratioTable} selectedTickers={tickers.map((x) => x.ticker)}/>}
                         </>
+                    </Tabs.Panel>
+                    <Tabs.Panel value="Segments">
+                        <Segments data={segmentsData} />
+                    </Tabs.Panel>
+                    <Tabs.Panel value="Common Size">
+                        <CommonSize data={commonSizeData} />
+                    </Tabs.Panel>
+                    <Tabs.Panel value="DCF">
+                        <DCFAnalysis
+                            ticker={tickers[0]?.ticker}
+                            reportType={reportType}
+                            period={years[0]?.year}
+                        />
                     </Tabs.Panel>
                 </Tabs>
             </AppShell.Main>

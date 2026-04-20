@@ -1,5 +1,10 @@
+import re
 from typing import Dict, Any, List, Optional
 import logging
+
+from sqlalchemy import values
+
+from services.ratio_tooltips import RATIO_SPECS, build_tooltips_for_series
 
 logger = logging.getLogger(__name__)
 
@@ -13,25 +18,33 @@ class FinancialRatioCalculator:
             'gross_profit_margin': {'label': 'Gross Profit Margin', 'unit': '%', 'category': 'Profitability'},
             'operating_margin': {'label': 'Operating Margin', 'unit': '%', 'category': 'Profitability'},
             'net_margin': {'label': 'Net Margin', 'unit': '%', 'category': 'Profitability'},
+            'pre_tax_margin': {'label': 'Pre-Tax Margin', 'unit': '%', 'category': 'Profitability'},
             'ebitda_margin': {'label': 'EBITDA Margin', 'unit': '%', 'category': 'Profitability'},
             'current_ratio': {'label': 'Current Ratio', 'unit': '', 'category': 'Liquidity'},
             'quick_ratio': {'label': 'Quick Ratio', 'unit': '', 'category': 'Liquidity'},
             'cash_ratio': {'label': 'Cash Ratio', 'unit': '', 'category': 'Liquidity'},
-            'debt_to_equity': {'label': 'Debt to Equity', 'unit': '', 'category': 'Leverage'},
-            'debt_to_total_capitalization': {'label': 'Debt to Total Capitalization', 'unit': '', 'category': 'Leverage'},
-            'total_assets_to_equity': {'label': 'Total Assets/Equity', 'unit': '', 'category': 'Leverage'},
-            'roe': {'label': 'Return on Equity (ROE)', 'unit': '%', 'category': 'Profitability'},
-            'roa': {'label': 'Return on Assets (ROA)', 'unit': '%', 'category': 'Profitability'},
-            'roic': {'label': 'Return on Invested Capital (ROIC)', 'unit': '%', 'category': 'Profitability'},
+            'debt_to_equity': {'label': 'Debt to Equity', 'unit': '', 'category': 'Capital'},
+            'debt_to_total_capitalization': {'label': 'Debt to Total Capitalization', 'unit': '', 'category': 'Capital'},
+            'total_assets_to_equity': {'label': 'Total Assets/Equity', 'unit': '', 'category': 'Capital'},
+            'average age of plant': {'label': 'Average Age of Plant', 'unit': '', 'category': 'Capital'},
+            'average remaining life of plant': {'label': 'Average Remaining Life of Plant', 'unit': '', 'category': 'Capital'},
+            'average total life span of plant': {'label': 'Average Total Life Span of Plant', 'unit': '', 'category': 'Capital'},
+            'roe': {'label': 'Return on Equity', 'unit': '%', 'category': 'Profitability'},
+            'roa': {'label': 'Return on Assets', 'unit': '%', 'category': 'Profitability'},
+            'roic': {'label': 'Return on Invested Capital', 'unit': '%', 'category': 'Profitability'},
             'interest_coverage': {'label': 'Interest Coverage Ratio', 'unit': '', 'category': 'Leverage'},
-            'inventory_turnover': {'label': 'Inventory Turnover', 'unit': 'x', 'category': 'Efficiency'},
-            'receivables_ratio': {'label': 'Receivables Ratio', 'unit': '', 'category': 'Efficiency'},
-            'operating_cash_flow_to_net_income': {'label': 'Operating Cash Flow/Net Income', 'unit': '', 'category': 'Cash Flow'},
-            'capex_to_depreciation': {'label': 'Capex/Depreciation', 'unit': '', 'category': 'Cash Flow'},
-            'book_value': {'label': 'Book Value', 'unit': '$', 'category': 'Valuation'},
-            'tangible_book_value': {'label': 'Tangible Book Value', 'unit': '$', 'category': 'Valuation'},
+            'inventory_turnover': {'label': 'Inventory Turnover', 'unit': '', 'category': 'Operating'},
+            'days_payable_outstanding': {'label': 'Days Payable Outstanding', 'unit': '', 'category': 'Operating'},
+            'ccc': {'label': 'Cash Conversion Cycle', 'unit': '', 'category': 'Operating'},
+            'receivables_turnover': {'label': 'Receivables Turnover', 'unit': '', 'category': 'Operating'},
+            'operating_cash_flow_to_net_income': {'label': 'Operating Cash Flow/Net Income', 'unit': '', 'category': 'Earnings Quality'},
+            'capex_to_depreciation': {'label': 'Capex/Depreciation', 'unit': '', 'category': 'Earnings Quality'},
+            'book_value': {'label': 'Book Value', 'unit': '$', 'category': 'Capital'},
+            'tangible_book_value': {'label': 'Tangible Book Value', 'unit': '$', 'category': 'Capital'},
             'net_working_capital_ratio': {'label': 'Net Working Capital Ratio', 'unit': '', 'category': 'Liquidity'},
             'earnings_per_share': {'label': 'Earnings Per Share', 'unit': '$', 'category': 'Profitability'}
+
+
         }
 
    
@@ -81,6 +94,7 @@ class FinancialRatioCalculator:
                     period_ratios = {}
                     for period, period_data in company_data['periods'].items():
                         period_ratios[period] = self.calculate_single_company_ratios(period_data)
+                    self._attach_tooltips_to_series(period_ratios)
                     peer_ratios[ticker] = {
                         'company_name': company_data.get('company_name', ticker),
                         'periods': period_ratios
@@ -103,105 +117,280 @@ class FinancialRatioCalculator:
         except Exception as e:
             logger.error(f"Error calculating peer group ratios: {e}")
             return {'error': str(e)}
-    
-    def _extract_key_values(self, income_statement: Dict, balance_sheet: Dict, cash_flow: Dict) -> Dict[str, float]:
+
+    def _attach_tooltips_to_series(self, period_ratios: Dict[str, Dict[str, Any]]) -> None:
+        """Attach tooltip metadata + YoY driver info onto each ratio per period.
+
+        Periods are sorted chronologically; the earliest shows formula only,
+        each later period compares against its immediate predecessor.
+        """
+        if not period_ratios:
+            return
+
+        periods_sorted = sorted(period_ratios.keys())
+        values_by_period = {
+            period: period_ratios[period].get('raw_values') or {}
+            for period in periods_sorted
+        }
+
+        for ratio_key in RATIO_SPECS.keys():
+            tooltips = build_tooltips_for_series(ratio_key, periods_sorted, values_by_period)
+            for period, tooltip in tooltips.items():
+                ratios = period_ratios.get(period, {}).get('ratios') or {}
+                ratio_result = ratios.get(ratio_key)
+                if isinstance(ratio_result, dict):
+                    ratio_result['tooltip'] = tooltip
+
+    # -------- Keyword based searches need to be scrapped; Use "standard concept" from edgartools instead ----------
+
+    def _extract_key_values(self, income_statement: Dict, balance_sheet: Dict, cash_flow: Dict, user_inputs: Dict = None) -> Dict[str, float]:
         """Extract key financial values from SEC data"""
         values = {}
-        
+        user_inputs = user_inputs or {}
         print(f"🔍 DEBUG: Extracting values from SEC data")
         print(f"📊 Income Statement keys: {list(income_statement.keys())[:10]}...")
         print(f"📊 Balance Sheet keys: {list(balance_sheet.keys())[:10]}...")
         print(f"📊 Cash Flow keys: {list(cash_flow.keys())[:10]}...")
-        
+
+    
         # Income Statement Values
         values['revenue'] = self._find_value_by_keywords(income_statement, [
-            'us-gaap.Revenues', 'us-gaap.SalesRevenueNet', 'us-gaap.RevenueFromContractWithCustomerExcludingAssessedTax'
+            'Revenue'
         ])
         values['gross_profit'] = self._find_value_by_keywords(income_statement, [
-            'us-gaap.GrossProfit'
+            'GrossProfit'
         ])
         values['operating_income'] = self._find_value_by_keywords(income_statement, [
-            'us-gaap.OperatingIncomeLoss'
+            'OperatingIncomeLoss'
         ])
         values['net_income'] = self._find_value_by_keywords(income_statement, [
-            'us-gaap.NetIncomeLoss'
+            'NetIncome'
         ])
         values['cost_of_goods_sold'] = self._find_value_by_keywords(income_statement, [
-            'us-gaap.CostOfGoodsAndServicesSold', 'us-gaap.CostOfRevenue'
+            'CostOfGoodsAndServicesSold'
         ])
-        values['depreciation_amortization'] = self._find_value_by_keywords(income_statement, [
-            'us-gaap.DepreciationAndAmortization'
-        ])
+        values['research_and_developement'] = self._find_value_by_keywords(income_statement, [
+            'ResearchAndDevelopmentExpenses'
+        ])    
+        values['operating_expenses'] = self._find_value_by_keywords(income_statement, [
+            'TotalOperatingExpenses'
+        ])                                                                       
         values['interest_expense'] = self._find_value_by_keywords(income_statement, [
-            'us-gaap.InterestExpense'
+            'InterestExpense'
+        ]) or self._find_value_by_keywords(cash_flow, ['InterestExpense'])
+        values['interest_income'] = self._find_value_by_keywords(income_statement, [
+            'InterestIncome', 'NetInterestIncome'
         ])
         values['shares_outstanding'] = self._find_value_by_keywords(balance_sheet, [
-            'us-gaap.CommonStockSharesOutstanding', 'us-gaap.EntityCommonStockSharesOutstanding',
-            'us-gaap.CommonStockSharesIssued', 'us-gaap.CommonStockSharesAuthorized'
+            'SharesYearEnd', 'SharesIssued',
+            'CommonStockSharesOutstanding', 'CommonStockSharesIssued',
+        ]) or self._find_value_by_keywords(income_statement, [
+            'SharesFullyDilutedAverage', 'SharesAverage',
         ])
+        values['income_taxes'] = self._find_value_by_keywords(income_statement, [
+            'IncomeTaxes'
+        ])
+        values['sg&a'] = self._find_value_by_keywords(income_statement, [
+            'SellingGeneralAndAdminExpenses'
+        ])
+        values['non_operating_income'] = self._find_value_by_keywords(income_statement, [
+            'NonoperatingIncomeExpense'
+        ])
+
+        # values['revenue'] = self._find_value_by_keywords(income_statement, [
+        #     'us-gaap.Revenues', 'us-gaap.SalesRevenueNet', 'us-gaap.RevenueFromContractWithCustomerExcludingAssessedTax'
+        # ])
+        # values['gross_profit'] = self._find_value_by_keywords(income_statement, [
+        #     'us-gaap.GrossProfit'
+        # ])
+        # values['operating_income'] = self._find_value_by_keywords(income_statement, [
+        #     'us-gaap.OperatingIncomeLoss'
+        # ])
+        # values['net_income'] = self._find_value_by_keywords(income_statement, [
+        #     'us-gaap.NetIncomeLoss'
+        # ])
+        # values['cost_of_goods_sold'] = self._find_value_by_keywords(income_statement, [
+        #     'us-gaap.CostOfGoodsAndServicesSold', 'us-gaap.CostOfRevenue'
+        # ])
+        # values['depreciation_amortization'] = self._find_value_by_keywords(income_statement, [
+        #     'us-gaap.DepreciationAndAmortization'
+        # ])
+        # values['interest_expense'] = self._find_value_by_keywords(income_statement, [
+        #     'us-gaap.InterestExpense'
+        # ])
+        # values['shares_outstanding'] = self._find_value_by_keywords(balance_sheet, [
+        #     'us-gaap.CommonStockSharesOutstanding', 'us-gaap.EntityCommonStockSharesOutstanding',
+        #     'us-gaap.CommonStockSharesIssued', 'us-gaap.CommonStockSharesAuthorized'
+        # ])
         
         # Balance Sheet Values
+        
         values['total_assets'] = self._find_value_by_keywords(balance_sheet, [
-            'us-gaap.Assets'
+            'Assets'
         ])
         values['current_assets'] = self._find_value_by_keywords(balance_sheet, [
-            'us-gaap.AssetsCurrent'
+            'CurrentAssetsTotal'
         ])
         values['total_liabilities'] = self._find_value_by_keywords(balance_sheet, [
-            'us-gaap.Liabilities'
+            'Liabilities'
         ])
         values['current_liabilities'] = self._find_value_by_keywords(balance_sheet, [
-            'us-gaap.LiabilitiesCurrent'
+            'CurrentLiabilitiesTotal'
+        ])
+        values['long_term_debt'] = self._find_value_by_keywords(balance_sheet, [
+            'LongTermDebt', 'LongTermDebtNoncurrent'
         ])
         values['total_equity'] = self._find_value_by_keywords(balance_sheet, [
-            'us-gaap.StockholdersEquity'
+            'AllEquityBalance', 'StockholdersEquity'
         ])
         values['cash'] = self._find_value_by_keywords(balance_sheet, [
-            'us-gaap.CashAndCashEquivalentsAtCarryingValue', 'us-gaap.CashAndCashEquivalents'
+            'CashAndCashEquivalents', 'CashAndMarketableSecurities',
+            'CashAndCashEquivalentsAtCarryingValue'
         ])
         values['inventory'] = self._find_value_by_keywords(balance_sheet, [
-            'us-gaap.InventoryNet'
+            'Inventories'
         ])
         values['accounts_receivable'] = self._find_value_by_keywords(balance_sheet, [
-            'us-gaap.AccountsReceivableNetCurrent'
+            'TradeReceivables'
         ])
-        
+        values['deffered_tax_assets'] = self._find_value_by_keywords(balance_sheet, [
+            'DeferredTaxNoncurrentAssets'
+        ])
+        values['PrepaidExpensesAndOtherCurrentAssets'] = self._find_value_by_keywords(balance_sheet, [
+            'PrepaidExpensesAndOtherCurrentAssets'
+        ])
+        values['accumulated_depreciation'] = self._find_value_by_keywords(balance_sheet, [
+            'AccumulatedDepreciation'
+        ])
+        values['PP&E_net'] = self._find_value_by_keywords(balance_sheet, [
+            'PlantPropertyEquipmentNet'
+        ])
+        values['pp&e_gross'] = self._find_value_by_keywords(balance_sheet, [
+            'GrossPropertyPlantEquipment'
+        ])
         # Cash Flow Values
         values['operating_cash_flow'] = self._find_value_by_keywords(cash_flow, [
-            'us-gaap.NetCashProvidedByUsedInOperatingActivities'
+            'NetCashFromOperatingActivities'
         ])
         values['capex'] = self._find_value_by_keywords(cash_flow, [
-            'us-gaap.PaymentsToAcquirePropertyPlantAndEquipment'
+            'CapitalExpenses'
         ])
-        
+
+        values['depreciation_amortization'] = self._find_value_by_keywords(cash_flow, [
+            'DepreciationDepletionAndAmortization',
+            'DepreciationAndAmortization',
+            'DepreciationAmortization',
+            'DepreciationExpense',
+            'OtherDepreciationAndAmortization',
+            'Depreciation',
+        ])
+        values['short_term_investments'] = self._find_value_by_keywords(balance_sheet, [
+            'ShortTermInvestments'
+        ])
+        values['shareholder_equity'] = self._find_value_by_keywords(balance_sheet, [
+            'AllEquityBalance', 'StockholdersEquity'
+        ])
+        values['goodwill'] = self._find_value_by_keywords(balance_sheet, [
+            'Goodwill'
+        ])
+        values['preferred_stock'] = self._find_value_by_keywords(balance_sheet, [
+            'PreferredStock', 'PreferredStockValue',
+            'PreferredStockIncludingAdditionalPaidInCapital'
+        ])
+        # User Inputs
+        values['stock_price'] = user_inputs.get('stock_price')
+        values['company_beta'] = user_inputs.get('company_beta')
+        values['nominal_risk_free_rate'] = user_inputs.get('nominal_risk_free_rate')
+        values['expected_S&P500_return'] = user_inputs.get('expected_S&P500_return')
+        values['cost_of_preferred'] = user_inputs.get('cost_of_preferred')
+        values['cost_of_debt'] = user_inputs.get('cost_of_debt')
+
         # Log extracted values for debugging
         print(f"🔍 EXTRACTED VALUES:")
         for key, value in values.items():
-            print(f"  {key}: {value:,.0f}")
-        
+            if value is None:
+                print(f"  {key}: None")
+            elif isinstance(value, (int, float)):
+                print(f"  {key}: {value:,.0f}")
+            else:
+                print(f"  {key}: {value}")
+
         return values
     
+
     def _find_value_by_keywords(self, statement_data: Dict, keywords: List[str]) -> float:
-        """Find a value by trying multiple possible keys"""
+        """Find a value by matching against dict keys, standard_concept, or concept fields.
+
+        The sec_service keys entries by edgartools' `standard_concept` (falling
+        back to the cleaned us-gaap concept). We also inspect each entry's
+        `standard_concept` and `concept` fields so callers don't have to know
+        which naming variant was chosen for a given filing.
+        """
+        if not isinstance(statement_data, dict) or not statement_data:
+            return 0.0
+
         for keyword in keywords:
-            if keyword in statement_data:
-                value_data = statement_data[keyword]
-                print(f"🔍 Found {keyword}: {value_data}")
-                if isinstance(value_data, dict) and 'value' in value_data:
-                    value = value_data['value']
+            # Direct key match — fast path.
+            value_data = statement_data.get(keyword)
+            if isinstance(value_data, dict) and value_data.get('value') is not None:
+                return float(value_data['value'])
+
+            # Secondary: scan entries for standard_concept / concept match.
+            for entry in statement_data.values():
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get('standard_concept') == keyword or entry.get('concept') == keyword:
+                    value = entry.get('value')
                     if value is not None:
-                        print(f"✅ Extracted {keyword}: {value}")
                         return float(value)
-                else:
-                    print(f"⚠️ {keyword} found but no 'value' field: {type(value_data)}")
-            else:
-                print(f"❌ {keyword} not found in statement data")
         return 0.0
     
+# ------------------------------------------------------------
+
     def _calculate_ratios(self, values: Dict[str, float]) -> Dict[str, Dict[str, Any]]:
         """Calculate financial ratios from extracted values"""
         ratios = {}
         
+        # Cost of Equity
+        if values['nominal_risk_free_rate'] is not None and values['company_beta'] is not None and values['expected_S&P500_return'] is not None:
+            cost_of_equity = values['nominal_risk_free_rate'] + values['company_beta'] * (values['expected_S&P500_return'] - values['nominal_risk_free_rate'])
+            ratios['cost_of_equity'] = self._create_ratio_result(cost_of_equity, 'Cost of Equity')
+
+        # After-tax cost of debt
+        if values.get('effective_tax_rate') is not None and values['cost_of_debt'] is not None: 
+            after_tax_cost_of_debt = round(values['cost_of_debt'] * (1 - values['effective_tax_rate']) * 100,2)
+            ratios['after_tax_cost_of_debt'] = self._create_ratio_result(after_tax_cost_of_debt, 'After-Tax Cost of Debt')
+
+        # Equity Market Value = Shares Outstanding * Stock Price
+        if values['shares_outstanding'] > 0 and values['stock_price'] is not None:
+            equity_market_value = values['shares_outstanding'] * values['stock_price']
+            ratios['equity_market_value'] = self._create_ratio_result(equity_market_value, 'Equity Market Value')
+
+        # Total Capital = equity market value + long term debt + preferred stock
+        if 'equity_market_value' in ratios and values['long_term_debt'] is not None and values['preferred_stock'] is not None:
+            total_capital = ratios['equity_market_value']['value'] + values['long_term_debt'] + values['preferred_stock']
+            ratios['total_capital'] = self._create_ratio_result(total_capital, 'Total Capital')
+
+        # Equity Weight = Equity Market Value / Total Capital
+        if 'equity_market_value' in ratios and 'total_capital' in ratios and ratios['total_capital']['value'] > 0:
+            equity_weight = round(ratios['equity_market_value']['value'] / ratios['total_capital']['value'],2)
+            ratios['equity_weight'] = self._create_ratio_result(equity_weight, 'Equity Weight')
+
+        # Debt Weight = (Long Term Debt + Preferred Stock) / Total Capital
+        if values['long_term_debt'] is not None and values['preferred_stock'] is not None and 'total_capital' in ratios and ratios['total_capital']['value'] > 0:
+            debt_weight = round(values['long_term_debt']/ ratios['total_capital']['value'],2)
+            ratios['debt_weight'] = self._create_ratio_result(debt_weight, 'Debt Weight')
+
+        # preferred weight = preferred stock / total capital
+        if values['preferred_stock'] is not None and 'total_capital' in ratios and ratios['total_capital']['value'] > 0:
+            preferred_weight = round(values['preferred_stock']/ ratios['total_capital']['value'],2)
+            ratios['preferred_weight'] = self._create_ratio_result(preferred_weight, 'Preferred Stock Weight')
+
+        # Weighted Average Cost of Capital (WACC) = (Equity Weight * Cost of Equity) + (Debt Weight * After-Tax Cost of Debt) + (Preferred Weight * Cost of Preferred)
+        if 'equity_weight' in ratios and 'cost_of_equity' in ratios and 'debt_weight' in ratios and 'after_tax_cost_of_debt' in ratios and 'preferred_weight' in ratios and values['cost_of_preferred'] is not None:    
+            wacc = round((ratios['equity_weight']['value'] * ratios['cost_of_equity']['value']) + (ratios['debt_weight']['value'] * ratios['after_tax_cost_of_debt']['value']) + (ratios['preferred_weight']['value'] * values['cost_of_preferred']),2)
+            ratios['wacc'] = self._create_ratio_result(wacc, 'Weighted Average Cost of Capital')    
+
         # Revenue (raw value in millions)
         if values['revenue'] > 0:
             ratios['revenue'] = self._create_ratio_result(values['revenue'], 'Revenue')
@@ -225,11 +414,13 @@ class FinancialRatioCalculator:
             ratios['net_margin'] = self._create_ratio_result(net_margin, 'Net Margin')
         
         # EBITDA Margin = (EBITDA / Revenue) * 100
+        # EBITDA = Operating Income + Depreciation & Amortization
         ebitda = values['operating_income'] + values['depreciation_amortization']
         if values['revenue'] > 0 and ebitda != 0:
             ebitda_margin = (ebitda / values['revenue']) * 100
             ratios['ebitda_margin'] = self._create_ratio_result(ebitda_margin, 'EBITDA Margin')
         
+
         # Current Ratio = Current Assets / Current Liabilities
         if values['current_liabilities'] > 0:
             current_ratio = values['current_assets'] / values['current_liabilities']
@@ -237,23 +428,25 @@ class FinancialRatioCalculator:
         
         # Quick Ratio = (Current Assets - Inventory) / Current Liabilities
         if values['current_liabilities'] > 0:
-            quick_ratio = (values['current_assets'] - values['inventory']) / values['current_liabilities']
+            quick_ratio = (values['current_assets'] - values['inventory'] - values['deffered_tax_assets'] - values['PrepaidExpensesAndOtherCurrentAssets']) / values['current_liabilities']
             ratios['quick_ratio'] = self._create_ratio_result(quick_ratio, 'Quick Ratio')
         
         # Cash Ratio = Cash / Current Liabilities
         if values['current_liabilities'] > 0:
-            cash_ratio = values['cash'] / values['current_liabilities']
+            cash_ratio = (values['cash'] + values['short_term_investments']) / values['current_liabilities']
             ratios['cash_ratio'] = self._create_ratio_result(cash_ratio, 'Cash Ratio')
         
-        # Debt to Equity = Total Liabilities / Total Equity
+        # Debt to Equity = Long Term Debt / Total Equity
         if values['total_equity'] > 0:
-            debt_to_equity = values['total_liabilities'] / values['total_equity']
+            debt_to_equity = values['long_term_debt'] / values['total_equity']
             ratios['debt_to_equity'] = self._create_ratio_result(debt_to_equity, 'Debt to Equity')
         
-        # Debt to Total Capitalization = Total Liabilities / (Total Liabilities + Total Equity)
-        total_capitalization = values['total_liabilities'] + values['total_equity']
+        # Debt to Total Capitalization = Long Term Debt / (Long Term Debt + Total Equity).
+        # Kept on the same decimal scale as Debt to Equity so the two ratios
+        # are directly comparable (D/TC must be < D/E whenever equity > 0).
+        total_capitalization = values['long_term_debt'] + values['total_equity']
         if total_capitalization > 0:
-            debt_to_cap = values['total_liabilities'] / total_capitalization
+            debt_to_cap = values['long_term_debt'] / total_capitalization
             ratios['debt_to_total_capitalization'] = self._create_ratio_result(debt_to_cap, 'Debt to Total Capitalization')
         
         # Total Assets to Equity = Total Assets / Total Equity
@@ -261,6 +454,31 @@ class FinancialRatioCalculator:
             assets_to_equity = values['total_assets'] / values['total_equity']
             ratios['total_assets_to_equity'] = self._create_ratio_result(assets_to_equity, 'Total Assets/Equity')
         
+        # Book Value = (assets - liabilities) / shares outstanding
+        if values['shares_outstanding'] > 0:
+            book_value = (values['total_assets']-values['total_liabilities']) / values['shares_outstanding']
+            ratios['book_value'] = self._create_ratio_result(book_value, 'Book Value')
+
+        # Tangible Book Value = (assets - goodwill - liabilities) / shares outstanding
+        if values['shares_outstanding'] > 0:
+            tangible_book_value = (values['total_assets']- values['total_liabilities']- values['goodwill']) / values['shares_outstanding']
+            ratios['tangible_book_value'] = self._create_ratio_result(tangible_book_value, 'Tangible Book Value')
+
+        # Average Age of Plant = Accumulated Depreciation / Depreciation Expense
+        if values['depreciation_amortization'] >0  and values['accumulated_depreciation']:
+            average_age_of_plant = values['accumulated_depreciation'] / values['depreciation_amortization']
+            ratios['average_age_of_plant'] = self._create_ratio_result(average_age_of_plant, 'Average Age of Plant')
+
+        # Average Remaining Life of Plant = Net PP&E / Depreciation Expense
+        if values['depreciation_amortization'] > 0 and values['PP&E_net']:
+            average_remaining_life_of_plant = values['PP&E_net'] / values['depreciation_amortization']
+            ratios['average_remaining_life_of_plant'] = self._create_ratio_result(average_remaining_life_of_plant, 'Average Remaining Life of Plant')
+
+        # Average Total Life Span of Plant = Gross PP&E / Depreciation Expense
+        if values['depreciation_amortization'] > 0 and values['pp&e_gross']:
+            average_total_life_span_of_plant = values['pp&e_gross'] / values['depreciation_amortization']
+            ratios['average_total_life_span_of_plant'] = self._create_ratio_result(average_total_life_span_of_plant, 'Average Total Life Span of Plant')    
+
         # ROE = (Net Income / Total Equity) * 100
         if values['total_equity'] > 0 and values['net_income'] != 0:
             roe = (values['net_income'] / values['total_equity']) * 100
@@ -283,8 +501,8 @@ class FinancialRatioCalculator:
             ratios['interest_coverage'] = self._create_ratio_result(interest_coverage, 'Interest Coverage Ratio')
         
         # Inventory Turnover = Cost of Goods Sold / Inventory
-        if values['inventory'] > 0:
-            inventory_turnover = values['cost_of_goods_sold'] / values['inventory']
+        if values['inventory'] > 0 and values['cost_of_goods_sold'] != 0:
+            inventory_turnover = abs(values['cost_of_goods_sold']) / values['inventory']
             ratios['inventory_turnover'] = self._create_ratio_result(inventory_turnover, 'Inventory Turnover')
         
         # Receivables Ratio = Accounts Receivable / Revenue
@@ -302,26 +520,42 @@ class FinancialRatioCalculator:
             capex_to_depreciation = values['capex'] / values['depreciation_amortization']
             ratios['capex_to_depreciation'] = self._create_ratio_result(capex_to_depreciation, 'Capex/Depreciation')
         
-        # Book Value = Total Equity (in millions)
-        if values['total_equity'] > 0:
-            book_value = values['total_equity'] / 1000000
-            ratios['book_value'] = self._create_ratio_result(book_value, 'Book Value')
-        
-        # Tangible Book Value = Total Equity (simplified, in millions)
-        if values['total_equity'] > 0:
-            tangible_book_value = values['total_equity'] / 1000000
-            ratios['tangible_book_value'] = self._create_ratio_result(tangible_book_value, 'Tangible Book Value')
-        
         # Net Working Capital Ratio = (Current Assets - Current Liabilities) / Total Assets
         if values['total_assets'] > 0:
             net_working_capital_ratio = (values['current_assets'] - values['current_liabilities']) / values['total_assets']
             ratios['net_working_capital_ratio'] = self._create_ratio_result(net_working_capital_ratio, 'Net Working Capital Ratio')
         
+        # SGA as percent of Revnue = SGA/Revenue
+        if values['revenue'] > 0 and values['sg&a'] != 0:
+            sga_percent = (values['sg&a'] / values['revenue']) * 100
+            ratios['sga_percent_of_revenue'] = self._create_ratio_result(sga_percent, 'SG&A as % of Revenue')
+        
+        # Effective tax rate = income taxes / pretax income (stored as percent)
+        pretax_income = values['operating_income']+values['interest_expense']+values['interest_income']+values['non_operating_income']
+        if pretax_income > 0 and values['income_taxes'] != 0:
+            effective_tax_rate = (values['income_taxes'] / pretax_income) * 100
+            ratios['effective_tax_rate'] = self._create_ratio_result(effective_tax_rate, 'Effective Tax Rate')
+
+        # Free Cash Flow
+        tax_rate_decimal = (ratios['effective_tax_rate']['value'] / 100) if 'effective_tax_rate' in ratios else 0.21
+        free_cash_flow = values['operating_cash_flow']+abs(values['capex'])+abs((values['interest_expense'])*(1-tax_rate_decimal))
+        ratios['free_cash_flow'] = self._create_ratio_result(free_cash_flow, 'Free Cash Flow')
+        
+        # Return on Invested Capital (ROIC) = Net Income / (Total Assets - Current Liabilities) * 100
+        invested_capital = values['long_term_debt']+ values['total_equity']
+        if invested_capital > 0:
+            roic = (values['net_income'] / invested_capital) * 100
+            ratios['return_on_invested_capital'] = self._create_ratio_result(roic, 'Return on Invested Capital (ROIC)')
+
         # Earnings Per Share = Net Income / Shares Outstanding
         if values['shares_outstanding'] > 0 and values['net_income'] != 0:
             eps = values['net_income'] / values['shares_outstanding']
             print(f"🧮 EPS calculation: {values['net_income']:,.0f} / {values['shares_outstanding']:,.0f} = {eps:.2f}")
             ratios['earnings_per_share'] = self._create_ratio_result(eps, 'Earnings Per Share')
+        
+        # ---------------------------
+        # Additional Common Size Ratios
+        # ---------------------------
         else:
             print(f"⚠️ Cannot calculate EPS: shares_outstanding={values['shares_outstanding']:,.0f}, net_income={values['net_income']:,.0f}")
         
@@ -337,7 +571,7 @@ class FinancialRatioCalculator:
     
     def _format_ratio_value(self, value: float, label: str) -> str:
         """Format ratio value for display"""
-        if 'Margin' in label or 'ROE' in label or 'ROA' in label or 'ROIC' in label:
+        if 'Margin' in label or 'ROE' in label or 'ROA' in label or 'ROIC' in label or 'Tax Rate' in label or 'Return on' in label:
             return f"{value:.2f}%"
         elif 'Ratio' in label or 'Turnover' in label:
             return f"{value:.2f}x"
@@ -348,9 +582,12 @@ class FinancialRatioCalculator:
         else:
             return f"{value:.2f}"
     
+
     def _assess_data_quality(self, values: Dict[str, float]) -> Dict[str, Any]:
         """Assess the quality of extracted financial data"""
-        non_zero_values = sum(1 for v in values.values() if v > 0)
+        non_zero_values = sum(
+            1 for v in values.values() if isinstance(v, (int, float)) and v > 0
+        )
         total_values = len(values)
         
         return {
@@ -358,4 +595,152 @@ class FinancialRatioCalculator:
             'non_zero_values': non_zero_values,
             'total_values': total_values,
             'quality_score': 'Good' if non_zero_values / total_values > 0.5 else 'Poor'
-        } 
+        }
+    ### ------ DCF related calculations -------
+    def _find_latest_cash_flow_year(self, cash_flow: Dict[str, Any]) -> Optional[int]:
+        """Find the latest fiscal year from cash flow statement metadata."""
+        latest_year = None
+
+        def extract_year(value: Any) -> Optional[int]:
+            if isinstance(value, (int, float)):
+                return int(value)
+            if isinstance(value, str) and value.isdigit():
+                return int(value)
+            if isinstance(value, str):
+                match = re.search(r"(\d{4})", value)
+                if match:
+                    return int(match.group(1))
+            return None
+
+        for item in cash_flow.values():
+            if isinstance(item, dict):
+                for key in ('fiscal_year', 'fy', 'year'):
+                    year_value = extract_year(item.get(key))
+                    if year_value is not None:
+                        latest_year = year_value if latest_year is None else max(latest_year, year_value)
+
+                period_value = item.get('period') or item.get('end')
+                year_value = extract_year(period_value)
+                if year_value is not None:
+                    latest_year = year_value if latest_year is None else max(latest_year, year_value)
+
+            elif isinstance(item, list):
+                for subitem in item:
+                    if isinstance(subitem, dict):
+                        for key in ('fiscal_year', 'fy', 'year'):
+                            year_value = extract_year(subitem.get(key))
+                            if year_value is not None:
+                                latest_year = year_value if latest_year is None else max(latest_year, year_value)
+
+                        period_value = subitem.get('period') or subitem.get('end')
+                        year_value = extract_year(period_value)
+                        if year_value is not None:
+                            latest_year = year_value if latest_year is None else max(latest_year, year_value)
+
+        return latest_year
+
+    def present_values_fcf(
+        self,
+        financial_data: Dict[str, Any],
+        discount_rate: float,
+        interim_growth_rate: float,
+        terminal_growth_rate: float,
+        periods: int = 5,
+        stock_price: float = 0.0,
+    ) -> Dict[str, Any]:
+        """Calculate present values for projected free cash flows.
+
+        Args:
+            financial_data: Financial data containing income_statement, balance_sheet, cash_flow
+            discount_rate: Discount rate as a decimal (e.g. 0.10 for 10%).
+            interim_growth_rate: Year-over-year growth rate for each forecasted year.
+            terminal_growth_rate: Growth rate used to calculate terminal value at the end of the projection.
+            periods: Number of periods to project forward.
+
+        Returns:
+            A dictionary containing projected FCF schedule, terminal value, and present values.
+        """
+        if periods < 0:
+            raise ValueError("periods must be zero or a positive integer")
+        if discount_rate is None:
+            raise ValueError("discount_rate is required")
+        if interim_growth_rate is None:
+            raise ValueError("interim_growth_rate is required")
+        if terminal_growth_rate is None:
+            raise ValueError("terminal_growth_rate is required")
+        if discount_rate <= terminal_growth_rate:
+            raise ValueError("discount_rate must be greater than terminal_growth_rate")
+
+        # Extract values
+        values = self._extract_key_values(
+            financial_data.get('income_statement', {}),
+            financial_data.get('balance_sheet', {}),
+            financial_data.get('cash_flow', {}),
+        )
+
+        # Calculate free cash flow. capex from the cash flow statement is a
+        # payment (positive outflow) in edgartools' output, so subtract it.
+        capex_outflow = abs(values.get('capex', 0) or 0)
+        free_cash_flow = (
+            values['operating_cash_flow']
+            - capex_outflow
+            + values['interest_expense'] * (1 - values.get('effective_tax_rate', 0.21))
+        )
+
+        latest_year = self._find_latest_cash_flow_year(financial_data['cash_flow'])
+        if latest_year is None:
+            raise ValueError("Unable to infer latest filing year from cash_flow statement.")
+
+        if isinstance(latest_year, str):
+            try:
+                latest_year = int(latest_year)
+            except ValueError:
+                raise ValueError("latest_year must be an integer or numeric string")
+
+        schedule = []
+        present_values = []
+        projected_fcf_list = []
+        total_present_value = 0.0
+        projected_fcf = free_cash_flow
+
+        for period in range(periods):
+            year = latest_year + period + 1  # Start from next year
+            discount_factor = (1 + discount_rate) ** (period + 1)
+            present_value = projected_fcf / discount_factor
+
+            schedule.append({
+                'period': period + 1,
+                'year': year,
+                'projected_fcf': round(projected_fcf, 2),
+                'discount_factor': round(discount_factor, 6),
+                'present_value': round(present_value, 2)
+            })
+            
+            projected_fcf_list.append(round(projected_fcf, 2))
+            present_values.append(round(present_value, 2))
+            total_present_value += present_value
+
+            projected_fcf *= (1 + interim_growth_rate)
+
+        terminal_value = projected_fcf * (1 + terminal_growth_rate) / (discount_rate - terminal_growth_rate)
+        terminal_present_value = terminal_value / ((1 + discount_rate) ** periods)
+
+        # Market-based enterprise value: equity market cap + debt − cash.
+        shares_outstanding = values.get('shares_outstanding') or 0
+        total_debt = values.get('long_term_debt') or 0
+        cash = values.get('cash') or 0
+        enterprise_value = (stock_price or 0) * shares_outstanding + total_debt - cash
+
+        equity_value = enterprise_value - total_debt
+        per_share_value = equity_value / shares_outstanding if shares_outstanding > 0 else 0
+
+        return {
+            'latest_year': latest_year,
+            'projected_fcf': projected_fcf_list,
+            'present_values': present_values,
+            'terminal_value': round(terminal_value, 2),
+            'enterprise_value': round(enterprise_value, 2),
+            'equity_value': round(equity_value, 2),
+            'per_share_value': round(per_share_value, 2),
+            'schedule': schedule
+        }

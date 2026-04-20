@@ -5,14 +5,16 @@ import os
 
 class Settings(BaseSettings):
     # Database
-    DATABASE_URL: str = "postgresql://postgres:qaz123@localhost:5432/TestDB"
+    DATABASE_URL: str = "postgresql://postgres:qaz123@localhost:5432/sec_db"
     
-    # Security
-    
+    # Security — loaded from .env; app fails fast if missing.
+    SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    
-    # OpenAI
+
+    # OpenAI — loaded from .env.
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
     
     
     # Stripe

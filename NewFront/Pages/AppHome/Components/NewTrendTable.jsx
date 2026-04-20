@@ -14,15 +14,22 @@ const formatCurrency = (value) => {
   }).format(value);
 };
 
-const FinancialStatementViewer = ({ data, companyIndex = 0 }) => {
+const STATEMENT_TITLES = {
+  balance_sheet: 'Balance Sheet',
+  income_statement: 'Income Statement',
+  cash_flow: 'Cash Flow Statement',
+};
+
+const FinancialStatementViewer = ({ data, statementType }) => {
   if (!data.companies || data.companies.length === 0) {
     return <Text>No data available</Text>;
   }
 
-  const company = data.companies[companyIndex];
-  const years = company.years;
+  const statementsToRender = statementType
+    ? [statementType]
+    : ['balance_sheet', 'cash_flow', 'income_statement'];
 
-  const renderCategorySection = (categoryTitle, categoryData) => {
+  const renderCategorySection = (categoryTitle, categoryData, years) => {
     if (!categoryData || categoryData.length === 0) {
       return null;
     }
@@ -101,21 +108,24 @@ const FinancialStatementViewer = ({ data, companyIndex = 0 }) => {
 //     );
 //   };
 
-  const renderStatementWithCategories = (statementTitle, statementData) => {
+  const renderStatementWithCategories = (statementTitle, statementData, years, key) => {
+    if (!statementData) {
+      return null;
+    }
     const categories = Object.keys(statementData);
-    
+
     if (categories.length === 0) {
       return null;
     }
 
     return (
-      <Stack spacing="md" mb="xl">
+      <Stack key={key} spacing="md" mb="xl">
         <Title order={3} className="statement-title">
           {statementTitle}
         </Title>
-        
-        {categories.map(category => 
-          renderCategorySection(category, statementData[category])
+
+        {categories.map(category =>
+          renderCategorySection(category, statementData[category], years)
         )}
       </Stack>
     );
@@ -124,20 +134,29 @@ const FinancialStatementViewer = ({ data, companyIndex = 0 }) => {
   return (
     <div className="financial-statement-viewer">
       <Stack spacing="xl">
-        <Group position="apart" mb="md">
-          <div>
-            <Title order={2} className="company-name">
-              {company.company.name}
-            </Title>
-            <Text size="sm" color="dimmed">
-              CIK: {company.company.cik}
-            </Text>
-          </div>
-        </Group>
+        {data.companies.map((company) => (
+          <Stack spacing="xl" key={company.company.cik} mb="xl">
+            <Group position="apart" mb="md">
+              <div>
+                <Title order={2} className="company-name">
+                  {company.company.name}
+                </Title>
+                <Text size="sm" color="dimmed">
+                  CIK: {company.company.cik}
+                </Text>
+              </div>
+            </Group>
 
-        {renderStatementWithCategories('Balance Statement', company.statements.balance_sheet)}
-        {renderStatementWithCategories('Cash Flow', company.statements.cash_flow)}
-        {renderStatementWithCategories('Income Statement', company.statements.income_statement)}
+            {statementsToRender.map((stmt) =>
+              renderStatementWithCategories(
+                STATEMENT_TITLES[stmt],
+                company.statements?.[stmt],
+                company.years,
+                stmt
+              )
+            )}
+          </Stack>
+        ))}
       </Stack>
     </div>
   );
