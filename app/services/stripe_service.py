@@ -33,26 +33,36 @@ class StripeService:
                 customer=customer_id,
                 items=[{'price': price_id}],
                 payment_behavior='default_incomplete',
-                expand=['latest_invoice.payment_intent']
             )
-            
+
+            # Stripe API 2025-03-31+ replaced invoice.payment_intent with
+            # invoice.confirmation_secret for Payment Element / subscription flows.
             client_secret = None
-            try:
-                latest_invoice = subscription.latest_invoice  # type: ignore
-                if (latest_invoice and 
-                    hasattr(latest_invoice, 'payment_intent') and 
-                    latest_invoice.payment_intent):
-                    payment_intent = latest_invoice.payment_intent  # type: ignore
-                    if hasattr(payment_intent, 'client_secret'):
-                        client_secret = payment_intent.client_secret  # type: ignore
-            except AttributeError:
-                pass
+            invoice_ref = subscription['latest_invoice']
+            invoice_id = invoice_ref if isinstance(invoice_ref, str) else invoice_ref.get('id')
+            if invoice_id:
+                invoice = stripe.Invoice.retrieve(invoice_id, expand=['confirmation_secret'])
+                try:
+                    cs = invoice['confirmation_secret']
+                    client_secret = cs.get('client_secret') if isinstance(cs, dict) else getattr(cs, 'client_secret', None)
+                except (KeyError, TypeError):
+                    client_secret = None
             
+            # current_period_start/end moved to items in Stripe API 2024-09-30+.
+            # Use subscript access to avoid collision with dict.items() builtin.
+            try:
+                item = subscription['items']['data'][0]
+                period_start = item.get('current_period_start')
+                period_end = item.get('current_period_end')
+            except (KeyError, IndexError, TypeError):
+                period_start = None
+                period_end = None
+
             return {
                 'subscription_id': subscription.id,
                 'status': subscription.status,
-                'current_period_start': subscription.current_period_start,
-                'current_period_end': subscription.current_period_end,
+                'current_period_start': period_start,
+                'current_period_end': period_end,
                 'client_secret': client_secret
             }
         except Exception as e:
@@ -79,11 +89,19 @@ class StripeService:
         """Get subscription details"""
         try:
             subscription = stripe.Subscription.retrieve(subscription_id)
+            try:
+                item = subscription['items']['data'][0]
+                period_start = item.get('current_period_start')
+                period_end = item.get('current_period_end')
+            except (KeyError, IndexError, TypeError):
+                period_start = None
+                period_end = None
+
             return {
                 'subscription_id': subscription.id,
                 'status': subscription.status,
-                'current_period_start': subscription.current_period_start,
-                'current_period_end': subscription.current_period_end,
+                'current_period_start': period_start,
+                'current_period_end': period_end,
                 'cancel_at_period_end': subscription.cancel_at_period_end
             }
         except Exception as e:

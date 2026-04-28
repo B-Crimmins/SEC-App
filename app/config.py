@@ -5,7 +5,7 @@ import os
 
 class Settings(BaseSettings):
     # Database
-    DATABASE_URL: str = "postgresql://postgres:qaz123@localhost:5432/sec_db"
+    DATABASE_URL: str = "postgresql://postgres:qaz123@localhost:5432/TestDB"
     
     # Security — loaded from .env; app fails fast if missing.
     SECRET_KEY: str
@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: Optional[str] = ""
     STRIPE_PUBLISHABLE_KEY: Optional[str] = ""
     STRIPE_WEBHOOK_SECRET: Optional[str] = ""
+    STRIPE_PRICE_ID_PRO: Optional[str] = ""
     
     # Redis (for Celery)
     REDIS_URL: str = "redis://localhost:6379"
@@ -37,7 +38,7 @@ class Settings(BaseSettings):
     PAID_TIER_LIMIT: int = 1000
     
     class Config:
-        env_file = ".env"
+        env_file = os.environ.get('ENV_FILE', '.env')
         case_sensitive = True
         env_prefix = ""
 

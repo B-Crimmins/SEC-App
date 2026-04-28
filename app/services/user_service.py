@@ -133,6 +133,11 @@ class UserService:
         
         return subscription
     
+    def delete_subscription(self, subscription: Subscription) -> None:
+        """Delete a subscription record from the database."""
+        self.db.delete(subscription)
+        self.db.commit()
+
     def update_subscription_status(self, subscription_id: str, status: str) -> Optional[Subscription]:
         """Update subscription status"""
         subscription = self.db.query(Subscription).filter(

@@ -6,6 +6,7 @@ from database import Base
 
 
 class SubscriptionStatus(str, enum.Enum):
+    INCOMPLETE = "incomplete"
     ACTIVE = "active"
     CANCELLED = "cancelled"
     PAST_DUE = "past_due"
@@ -19,7 +20,7 @@ class Subscription(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     stripe_subscription_id = Column(String, unique=True, index=True)
     stripe_customer_id = Column(String, index=True)
-    status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.ACTIVE)
+    status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.INCOMPLETE)
     current_period_start = Column(DateTime(timezone=True))
     current_period_end = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())

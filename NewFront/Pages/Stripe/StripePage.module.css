@@ -1,40 +1,33 @@
-.title {
-  font-size: 34px;
-  font-weight: 500;
+.planCard {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 
-  @media (max-width: $mantine-breakpoint-sm) {
-    font-size: 24px;
+  &:hover {
+    border-color: var(--mantine-color-intrinsiq-6);
   }
 }
 
-.description {
-  max-width: 600px;
-  margin: auto;
-
-  &::after {
-    content: '';
-    display: block;
-    background-color: var(--mantine-color-blue-filled);
-    width: 45px;
-    height: 2px;
-    margin-top: var(--mantine-spacing-sm);
-    margin-left: auto;
-    margin-right: auto;
-  }
+.selected {
+  border-color: var(--mantine-color-intrinsiq-5) !important;
+  box-shadow: 0 0 0 1px var(--mantine-color-intrinsiq-5);
 }
 
-.card {
-  border: 1px solid light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5));
+.proCard {
+  border-color: var(--mantine-color-intrinsiq-8);
 }
 
 .cardTitle {
   &::after {
     content: '';
     display: block;
-    background-color: var(--mantine-color-blue-filled);
-    width: 45px;
+    background-color: var(--mantine-color-intrinsiq-5);
+    width: 36px;
     height: 2px;
-    margin-top: var(--mantine-spacing-sm);
+    margin-top: var(--mantine-spacing-xs);
   }
 }
 
+.successCard {
+  border-color: var(--mantine-color-gain-5);
+  background-color: rgba(47, 174, 110, 0.06);
+}
