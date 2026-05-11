@@ -1,35 +1,43 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import {
-  Button,
-  Divider,
-  Group,
-  NumberInput,
-  Paper,
-  SimpleGrid,
-  Stack,
-  Table,
-  Text,
-  Title,
-} from '@mantine/core';
 import globalConfig from '../../../global/globalConfig.json';
-
-const formatCurrency = (value) => {
-  if (value === undefined || value === null || Number.isNaN(value)) return '—';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-};
+import { formatCurrency as sharedFormatCurrency } from '../../../Utilities/formatters';
+import { useUnits } from '../../../Utilities/UnitsContext';
+import s from './statements.module.css';
 
 const formatPercent = (value) => {
   if (value === undefined || value === null || Number.isNaN(value)) return '—';
   return `${(value * 100).toFixed(2)}%`;
 };
 
+// Plain numeric input. Uses step/min/max natively and coerces the string value
+// back to a number on change. Keeps the field usable when empty so the user
+// can clear and retype without the field snapping to 0.
+const NumberField = ({ label, description, value, onChange, step, min, max, prefix }) => (
+  <div className={s.inputRoot}>
+    <label className={s.inputLabel}>{label}</label>
+    {description && <span className={s.inputDesc}>{description}</span>}
+    <input
+      className={s.input}
+      type="number"
+      value={value}
+      step={step}
+      min={min}
+      max={max}
+      onChange={(e) => {
+        const raw = e.target.value;
+        if (raw === '') { onChange(''); return; }
+        const parsed = parseFloat(raw);
+        onChange(Number.isNaN(parsed) ? '' : parsed);
+      }}
+      style={prefix ? { paddingLeft: 22 } : undefined}
+    />
+  </div>
+);
+
 const DCFAnalysis = ({ ticker, reportType, period }) => {
+  const units = useUnits();
+  const formatCurrency = (value) => sharedFormatCurrency(value, units);
   const [dcfData, setDcfData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -56,11 +64,11 @@ const DCFAnalysis = ({ ticker, reportType, period }) => {
           ticker,
           report_type: reportType,
           period,
-          discount_rate: inputs.discountRate,
-          interim_growth_rate: inputs.interimGrowthRate,
-          terminal_growth_rate: inputs.terminalGrowthRate,
-          forecast_periods: inputs.forecastPeriods,
-          stock_price: inputs.stockPrice,
+          discount_rate: Number(inputs.discountRate) || 0,
+          interim_growth_rate: Number(inputs.interimGrowthRate) || 0,
+          terminal_growth_rate: Number(inputs.terminalGrowthRate) || 0,
+          forecast_periods: Number(inputs.forecastPeriods) || 5,
+          stock_price: Number(inputs.stockPrice) || 0,
         },
         {
           headers: {
@@ -87,164 +95,139 @@ const DCFAnalysis = ({ ticker, reportType, period }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker, reportType, period]);
 
-  const handleInputChange = (field, value) => {
-    setInputs((prev) => ({
-      ...prev,
-      [field]: typeof value === 'number' ? value : parseFloat(value) || 0,
-    }));
-  };
+  const set = (field, value) => setInputs((prev) => ({ ...prev, [field]: value }));
 
   return (
-    <Stack pt={25}>
-      <Title order={3}>DCF Valuation</Title>
-      <Text c="dimmed" size="sm">
+    <div className={s.stack} style={{ paddingTop: 16 }}>
+      <h3 className={s.sectionLabel}>DCF Valuation</h3>
+      <div className={s.dim}>
         {ticker
           ? `${ticker} · ${reportType || '—'} · ${period || '—'}`
           : 'Enter a ticker, report type, and year in the sidebar to run a valuation.'}
-      </Text>
+      </div>
 
-      <Paper withBorder shadow="xs" p="md">
-        <Title order={5} mb="sm">Valuation Parameters</Title>
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
-          <NumberInput
+      <div className={s.card}>
+        <h4 className={s.cardTitle}>Valuation Parameters</h4>
+        <div className={s.grid4}>
+          <NumberField
             label="Discount Rate"
             description="As a decimal (e.g. 0.10 = 10%)"
             value={inputs.discountRate}
-            onChange={(v) => handleInputChange('discountRate', v)}
+            onChange={(v) => set('discountRate', v)}
             step={0.01}
-            decimalScale={4}
             min={0}
           />
-          <NumberInput
+          <NumberField
             label="Interim Growth Rate"
             description="Per-period growth during forecast"
             value={inputs.interimGrowthRate}
-            onChange={(v) => handleInputChange('interimGrowthRate', v)}
+            onChange={(v) => set('interimGrowthRate', v)}
             step={0.01}
-            decimalScale={4}
           />
-          <NumberInput
+          <NumberField
             label="Terminal Growth Rate"
             description="Must be below discount rate"
             value={inputs.terminalGrowthRate}
-            onChange={(v) => handleInputChange('terminalGrowthRate', v)}
+            onChange={(v) => set('terminalGrowthRate', v)}
             step={0.01}
-            decimalScale={4}
           />
-          <NumberInput
+          <NumberField
             label="Forecast Periods"
             description="Years to project"
             value={inputs.forecastPeriods}
-            onChange={(v) => handleInputChange('forecastPeriods', v)}
+            onChange={(v) => set('forecastPeriods', v)}
             min={1}
             max={15}
             step={1}
-            allowDecimal={false}
           />
-          <NumberInput
+          <NumberField
             label="Stock Price"
             description="Current or target share price ($)"
             value={inputs.stockPrice}
-            onChange={(v) => handleInputChange('stockPrice', v)}
+            onChange={(v) => set('stockPrice', v)}
             min={0}
             step={1}
-            decimalScale={2}
-            prefix="$"
-            thousandSeparator=","
           />
-        </SimpleGrid>
-        <Group justify="flex-end" mt="md">
-          <Button onClick={fetchDCFData} loading={loading}>
-            Recalculate
-          </Button>
-        </Group>
-      </Paper>
+        </div>
+        <div className={s.rowEnd} style={{ marginTop: 12 }}>
+          <button className={s.btn} type="button" onClick={fetchDCFData} disabled={loading}>
+            {loading ? 'Calculating…' : 'Recalculate'}
+          </button>
+        </div>
+      </div>
 
-      {error && (
-        <Paper withBorder p="md" style={{ borderColor: 'var(--mantine-color-red-5)' }}>
-          <Text c="red">{error}</Text>
-        </Paper>
+      {error && <div className={s.alertError}>{error}</div>}
+
+      {loading && !dcfData && (
+        <div className={s.grid2}>
+          {[0, 1].map((i) => (
+            <div key={i} className={s.card}>
+              <div style={{ height: 14, width: '40%', background: 'var(--mantine-color-gray-2)', borderRadius: 4, marginBottom: 10 }} />
+              <div className={s.stackSm}>
+                {[0, 1, 2, 3, 4].map((j) => (
+                  <div key={j} style={{ height: 12, background: 'var(--mantine-color-gray-2)', borderRadius: 4 }} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {dcfData && (
-        <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-          <Paper withBorder shadow="xs" p="md">
-            <Title order={5} mb="sm">Assumptions</Title>
-            <Table>
-              <Table.Tbody>
-                <Table.Tr>
-                  <Table.Td>Discount Rate</Table.Td>
-                  <Table.Td ta="right">{formatPercent(dcfData.discount_rate)}</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Td>Interim Growth Rate</Table.Td>
-                  <Table.Td ta="right">{formatPercent(dcfData.interim_growth_rate)}</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Td>Terminal Growth Rate</Table.Td>
-                  <Table.Td ta="right">{formatPercent(dcfData.terminal_growth_rate)}</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Td>Forecast Periods</Table.Td>
-                  <Table.Td ta="right">{dcfData.forecast_periods}</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Td>Latest Filing Year</Table.Td>
-                  <Table.Td ta="right">{dcfData.latest_year}</Table.Td>
-                </Table.Tr>
-              </Table.Tbody>
-            </Table>
-          </Paper>
+        <div className={s.grid2}>
+          <div className={s.card}>
+            <h4 className={s.cardTitle}>Assumptions</h4>
+            <table className={s.table}>
+              <tbody>
+                <tr><td>Discount Rate</td><td className={s.num}>{formatPercent(dcfData.discount_rate)}</td></tr>
+                <tr><td>Interim Growth Rate</td><td className={s.num}>{formatPercent(dcfData.interim_growth_rate)}</td></tr>
+                <tr><td>Terminal Growth Rate</td><td className={s.num}>{formatPercent(dcfData.terminal_growth_rate)}</td></tr>
+                <tr><td>Forecast Periods</td><td className={s.num}>{dcfData.forecast_periods}</td></tr>
+                <tr><td>Latest Filing Year</td><td className={s.num}>{dcfData.latest_year}</td></tr>
+              </tbody>
+            </table>
+          </div>
 
-          <Paper withBorder shadow="xs" p="md">
-            <Title order={5} mb="sm">Valuation Summary</Title>
-            <Table>
-              <Table.Tbody>
-                <Table.Tr>
-                  <Table.Td>Terminal Value</Table.Td>
-                  <Table.Td ta="right">{formatCurrency(dcfData.terminal_value)}</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Td>Enterprise Value</Table.Td>
-                  <Table.Td ta="right">{formatCurrency(dcfData.enterprise_value)}</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Td>Equity Value</Table.Td>
-                  <Table.Td ta="right">{formatCurrency(dcfData.equity_value)}</Table.Td>
-                </Table.Tr>
-              </Table.Tbody>
-            </Table>
-            <Divider my="sm" />
-            <Group justify="space-between">
-              <Text fw={600}>Per Share Value</Text>
-              <Text fw={700} c="teal">{formatCurrency(dcfData.per_share_value)}</Text>
-            </Group>
-          </Paper>
+          <div className={s.card}>
+            <h4 className={s.cardTitle}>Valuation Summary</h4>
+            <table className={s.table}>
+              <tbody>
+                <tr><td>Terminal Value</td><td className={s.num}>{formatCurrency(dcfData.terminal_value)}</td></tr>
+                <tr><td>Enterprise Value</td><td className={s.num}>{formatCurrency(dcfData.enterprise_value)}</td></tr>
+                <tr><td>Equity Value</td><td className={s.num}>{formatCurrency(dcfData.equity_value)}</td></tr>
+              </tbody>
+            </table>
+            <div className={s.popDivider} style={{ margin: '12px 0' }} />
+            <div className={s.row}>
+              <span style={{ fontWeight: 600 }}>Per Share Value</span>
+              <span className={s.valuePositive}>{formatCurrency(dcfData.per_share_value)}</span>
+            </div>
+          </div>
 
-          <Paper withBorder shadow="xs" p="md" style={{ gridColumn: '1 / -1' }}>
-            <Title order={5} mb="sm">Projected Free Cash Flow</Title>
-            <Table highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Year</Table.Th>
-                  <Table.Th ta="right">Projected FCF</Table.Th>
-                  <Table.Th ta="right">Present Value</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
+          <div className={`${s.card} ${s.fullSpan}`}>
+            <h4 className={s.cardTitle}>Projected Free Cash Flow</h4>
+            <table className={s.table}>
+              <thead>
+                <tr>
+                  <th>Year</th>
+                  <th className={s.numHead}>Projected FCF</th>
+                  <th className={s.numHead}>Present Value</th>
+                </tr>
+              </thead>
+              <tbody>
                 {(dcfData.projected_fcf || []).map((fcf, idx) => (
-                  <Table.Tr key={idx}>
-                    <Table.Td>{dcfData.latest_year + idx + 1}</Table.Td>
-                    <Table.Td ta="right">{formatCurrency(fcf)}</Table.Td>
-                    <Table.Td ta="right">{formatCurrency(dcfData.present_values?.[idx])}</Table.Td>
-                  </Table.Tr>
+                  <tr key={idx}>
+                    <td>{dcfData.latest_year + idx + 1}</td>
+                    <td className={s.num}>{formatCurrency(fcf)}</td>
+                    <td className={s.num}>{formatCurrency(dcfData.present_values?.[idx])}</td>
+                  </tr>
                 ))}
-              </Table.Tbody>
-            </Table>
-          </Paper>
-        </SimpleGrid>
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
-    </Stack>
+    </div>
   );
 };
 

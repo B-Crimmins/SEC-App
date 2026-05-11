@@ -1,0 +1,199 @@
+/* Shared styles for statement/ratio/DCF tables. Uses Mantine theme vars so
+   the existing dark/light toggle keeps working without any Mantine JSX. */
+
+.card {
+  background: var(--mantine-color-body);
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: 8px;
+  padding: 16px;
+}
+:global([data-mantine-color-scheme="dark"]) .card {
+  border-color: var(--mantine-color-dark-4);
+}
+
+.cardTitle {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sectionLabel {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.sectionSub {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--mantine-color-gray-6);
+}
+:global([data-mantine-color-scheme="dark"]) .sectionSub {
+  color: var(--mantine-color-gray-5);
+}
+
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.stackSm { display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.rowEnd { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ---------- tables ---------- */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--mantine-color-gray-7);
+  border-bottom: 1px solid var(--mantine-color-gray-3);
+  white-space: nowrap;
+}
+.table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+  font-variant-numeric: tabular-nums;
+}
+.table tbody tr:hover { background: var(--mantine-color-gray-0); }
+
+:global([data-mantine-color-scheme="dark"]) .table th { color: var(--mantine-color-gray-5); border-bottom-color: var(--mantine-color-dark-4); }
+:global([data-mantine-color-scheme="dark"]) .table td { border-bottom-color: var(--mantine-color-dark-5); }
+:global([data-mantine-color-scheme="dark"]) .table tbody tr:hover { background: var(--mantine-color-dark-6); }
+
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.numHead { text-align: right; }
+.label { font-weight: 500; }
+
+/* Section header row — collapses per-category sub-tables into a single table */
+.sectionRow td {
+  background: var(--mantine-color-gray-1);
+  color: var(--mantine-color-gray-8);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 10px 10px 8px;
+  border-top: 1px solid var(--mantine-color-gray-3);
+  border-bottom: 1px solid var(--mantine-color-gray-3);
+}
+:global([data-mantine-color-scheme="dark"]) .sectionRow td {
+  background: var(--mantine-color-dark-6);
+  color: var(--mantine-color-gray-3);
+  border-color: var(--mantine-color-dark-4);
+}
+.sectionRow:hover td { background: var(--mantine-color-gray-1); }
+:global([data-mantine-color-scheme="dark"]) .sectionRow:hover td { background: var(--mantine-color-dark-6); }
+
+.subSectionRow td {
+  font-weight: 600;
+  padding: 8px 10px 4px;
+  font-size: 12px;
+  color: var(--mantine-color-gray-7);
+  background: transparent;
+  border-top: 1px solid var(--mantine-color-gray-2);
+  text-decoration: underline;
+}
+:global([data-mantine-color-scheme="dark"]) .subSectionRow td {
+  color: var(--mantine-color-gray-4);
+  border-top-color: var(--mantine-color-dark-5);
+}
+.subSectionRow:hover td { background: transparent; }
+
+.spacerRow td { padding: 4px 0; border: none; background: transparent; }
+.spacerRow:hover td { background: transparent; }
+
+/* ---------- buttons / inputs ---------- */
+.btn {
+  background: var(--mantine-color-blue-6);
+  color: white;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn:hover { background: var(--mantine-color-blue-7); }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.inputRoot { display: flex; flex-direction: column; gap: 4px; }
+.inputLabel { font-size: 13px; font-weight: 500; }
+.inputDesc { font-size: 11px; color: var(--mantine-color-gray-6); }
+:global([data-mantine-color-scheme="dark"]) .inputDesc { color: var(--mantine-color-gray-5); }
+.input {
+  background: var(--mantine-color-body);
+  border: 1px solid var(--mantine-color-gray-4);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: inherit;
+  outline: none;
+  font-variant-numeric: tabular-nums;
+}
+.input:focus {
+  border-color: var(--mantine-color-blue-5);
+  box-shadow: 0 0 0 2px rgba(34, 139, 230, 0.2);
+}
+:global([data-mantine-color-scheme="dark"]) .input { border-color: var(--mantine-color-dark-4); background: var(--mantine-color-dark-6); }
+
+/* ---------- grid layouts ---------- */
+.grid2  { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.grid4  { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+@media (max-width: 960px) { .grid4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } .grid4 { grid-template-columns: 1fr; } }
+.fullSpan { grid-column: 1 / -1; }
+
+/* ---------- alerts ---------- */
+.alertError {
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--mantine-color-red-5);
+  background: rgba(250, 82, 82, 0.08);
+  color: var(--mantine-color-red-7);
+  font-size: 13px;
+}
+:global([data-mantine-color-scheme="dark"]) .alertError { color: var(--mantine-color-red-4); }
+
+.dim { color: var(--mantine-color-gray-6); font-size: 13px; }
+:global([data-mantine-color-scheme="dark"]) .dim { color: var(--mantine-color-gray-5); }
+.mono { font-variant-numeric: tabular-nums; }
+
+.valuePositive { color: var(--mantine-color-teal-7); font-weight: 600; }
+
+/* ---------- popover ---------- */
+.popTarget {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1.2;
+  transition: background-color 120ms ease;
+}
+.popTarget:hover, .popOpen { background-color: var(--mantine-color-gray-2); }
+:global([data-mantine-color-scheme="dark"]) .popTarget:hover,
+:global([data-mantine-color-scheme="dark"]) .popOpen { background-color: var(--mantine-color-dark-5); }
+
+.popPanel {
+  background: var(--mantine-color-body);
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: 6px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+  line-height: 1.45;
+}
+:global([data-mantine-color-scheme="dark"]) .popPanel {
+  border-color: var(--mantine-color-dark-4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+}
+.popTitle { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.popDim { color: var(--mantine-color-gray-6); }
+:global([data-mantine-color-scheme="dark"]) .popDim { color: var(--mantine-color-gray-5); }
+.popDivider { height: 1px; background: var(--mantine-color-gray-3); margin: 6px 0; }
+:global([data-mantine-color-scheme="dark"]) .popDivider { background: var(--mantine-color-dark-4); }
+
+.deltaUp   { color: var(--mantine-color-teal-7); font-weight: 600; }
+.deltaDown { color: var(--mantine-color-red-7); font-weight: 600; }

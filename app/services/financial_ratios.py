@@ -155,7 +155,11 @@ class FinancialRatioCalculator:
     
         # Income Statement Values
         values['revenue'] = self._find_value_by_keywords(income_statement, [
-            'Revenue'
+            'Revenues',
+            'Revenue',
+            'SalesRevenueNet',
+            'RevenueFromContractWithCustomerExcludingAssessedTax',
+            'RevenueFromContractWithCustomerIncludingAssessedTax',
         ])
         values['gross_profit'] = self._find_value_by_keywords(income_statement, [
             'GrossProfit'

@@ -1,20 +1,13 @@
 import React from 'react';
-import { Paper, Stack, Table, Text, Title } from '@mantine/core';
+import { Paper, Skeleton, Stack, Table, Text, Title } from '@mantine/core';
+import { formatCurrency as sharedFormatCurrency } from '../../../Utilities/formatters';
+import { useUnits } from '../../../Utilities/UnitsContext';
 
 const BUCKETS = [
   { key: 'geography', title: 'Geographic Segments' },
   { key: 'product', title: 'Product Segments' },
   { key: 'business_segment', title: 'Business Segments' },
 ];
-
-const formatCurrency = (value) => {
-  if (value === null || value === undefined || Number.isNaN(value)) return '';
-  const absValue = Math.abs(value);
-  if (absValue >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
-  if (absValue >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
-  if (absValue >= 1e3) return `$${(value / 1e3).toFixed(2)}K`;
-  return `$${value.toFixed(0)}`;
-};
 
 const buildBucketTable = (data, bucketKey) => {
   const periods = data?.periods || [];
@@ -48,6 +41,11 @@ const buildBucketTable = (data, bucketKey) => {
 };
 
 const SegmentTable = ({ title, data, bucketKey }) => {
+  const units = useUnits();
+  const formatCurrency = (v) => {
+    const out = sharedFormatCurrency(v, units);
+    return out === '—' ? '' : out;
+  };
   const built = buildBucketTable(data, bucketKey);
   if (!built) return null;
   const { periods, labelOrder } = built;
@@ -94,7 +92,23 @@ const SegmentTable = ({ title, data, bucketKey }) => {
   );
 };
 
-const Segments = ({ data }) => {
+const SegmentsSkeleton = () => (
+  <Stack gap="md" pt="md">
+    <Skeleton height={24} width={280} />
+    {[0, 1, 2].map((i) => (
+      <Paper key={i} withBorder p="md" radius="md">
+        <Skeleton height={16} width={180} mb="sm" />
+        <Stack gap={8}>
+          {[0, 1, 2, 3].map((j) => <Skeleton key={j} height={14} />)}
+        </Stack>
+      </Paper>
+    ))}
+  </Stack>
+);
+
+const Segments = ({ data, loading }) => {
+  if (loading && !data?.by_period) return <SegmentsSkeleton />;
+
   if (!data || !data.by_period) {
     return <Title order={4}>No segment data available. Please search first.</Title>;
   }

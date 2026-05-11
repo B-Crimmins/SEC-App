@@ -227,8 +227,9 @@ async def generate_trend_analysis(
         ticks.append(str(companies_data[0]['cik']))
     
 
-    # Needs the report type
-    r = sec_service.GetMultiParsedData(ticks, analysis_request.periods)
+    r = sec_service.GetMultiParsedData(
+        ticks, analysis_request.periods, analysis_request.report_type
+    )
 
     return r
 

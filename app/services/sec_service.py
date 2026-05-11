@@ -20,6 +20,53 @@ _IDENTITY = "brysoncrimmins@yahoo.com"
 _NAMESPACES = ("us-gaap", "dei", "ifrs-full", "srt")
 _DATE_COL_RE = re.compile(r"^\d{4}-\d{2}-\d{2}")
 
+# Calendar-quarter end dates. Companies with non-calendar fiscal years still
+# file 10-Qs at one of these four points roughly — we match the closest filing
+# rather than requiring exact equality so we don't reject Apple's late-Sep
+# fiscal-Q4 against a calendar Q3 request.
+_QUARTER_END_MMDD = {1: "03-31", 2: "06-30", 3: "09-30", 4: "12-31"}
+
+# Accepts "Q1 2024", "2024 Q1", "2024Q1", "2024-Q1", case-insensitive.
+_QUARTER_RE = re.compile(
+    r"^\s*(?:Q\s*([1-4])\s*[- ]?\s*(\d{4})|(\d{4})\s*[- ]?\s*Q\s*([1-4]))\s*$",
+    re.IGNORECASE,
+)
+
+
+def _parse_quarter_period(period: str) -> Optional[Dict[str, Any]]:
+    """Parse a 10-Q period string into year + quarter + expected end date.
+
+    Returns None if `period` is just a year (no quarter component) or in any
+    other shape — callers fall back to the legacy year-only logic for 10-K.
+    """
+    if not period:
+        return None
+    m = _QUARTER_RE.match(str(period))
+    if not m:
+        return None
+    if m.group(1):
+        quarter = int(m.group(1))
+        year = int(m.group(2))
+    else:
+        quarter = int(m.group(4))
+        year = int(m.group(3))
+    end_mmdd = _QUARTER_END_MMDD[quarter]
+    return {
+        "year": str(year),
+        "quarter": quarter,
+        "expected_end": f"{year}-{end_mmdd}",
+        "label": f"Q{quarter} {year}",
+    }
+
+
+def _date_str(value: Any) -> str:
+    """Best-effort YYYY-MM-DD extraction from a date / datetime / string."""
+    if value is None:
+        return ""
+    s = str(value)
+    m = re.match(r"(\d{4}-\d{2}-\d{2})", s)
+    return m.group(1) if m else s
+
 # When several us-gaap concepts share a standard_concept, prefer the
 # canonical roll-up row over subtotals and supplemental disclosures. We do
 # that by penalizing tell-tale substrings in the raw concept name — higher
@@ -60,8 +107,14 @@ def _clean_concept(concept: Any) -> str:
 
 
 def _find_period_column(df: pd.DataFrame, year: str) -> Optional[str]:
-    """Locate the YYYY-MM-DD column that covers a given fiscal year."""
-    target = str(year)
+    """Locate the YYYY-MM-DD column that covers a given fiscal year/quarter.
+
+    Accepts either a plain year ("2024") or a quarter string ("Q2 2024") —
+    the quarter form is collapsed to its 4-digit year for substring matching
+    since edgartools dataframes label columns by date, not quarter.
+    """
+    quarter_info = _parse_quarter_period(year)
+    target = quarter_info["year"] if quarter_info else str(year)
     for col in df.columns:
         if isinstance(col, str) and _DATE_COL_RE.match(col) and target in col:
             return col
@@ -190,7 +243,13 @@ class SECService:
         return rows
 
     def _find_filing(self, cik: str, report_type: str, period: str):
-        """Pick the filing whose period_of_report / filing_date falls in `period`."""
+        """Pick the filing whose period_of_report / filing_date falls in `period`.
+
+        For 10-Q with a quarterly period (e.g. "Q2 2024"), matches by closest
+        period_of_report to the calendar quarter-end (within ~45 days to
+        accommodate non-calendar fiscal years). For 10-K or year-only periods,
+        keeps the legacy substring match.
+        """
         try:
             company = Company(str(cik))
             filings = company.get_filings(form=report_type)
@@ -198,16 +257,59 @@ class SECService:
             logger.warning("Could not load filings for %s: %s", cik, exc)
             return None
 
+        quarter_info = _parse_quarter_period(period) if str(report_type).upper() == "10-Q" else None
+        if quarter_info:
+            return self._find_quarterly_filing(filings, quarter_info)
+
         target_year = str(period).strip()
         try:
             for filing in filings:
-                report_date = str(getattr(filing, "report_date", "") or "")
-                filing_date = str(getattr(filing, "filing_date", "") or "")
+                report_date = _date_str(getattr(filing, "report_date", ""))
+                filing_date = _date_str(getattr(filing, "filing_date", ""))
                 if target_year and (target_year in report_date or target_year in filing_date):
                     return filing
         except Exception as exc:
             logger.warning("Error scanning filings: %s", exc)
         return None
+
+    @staticmethod
+    def _find_quarterly_filing(filings, quarter_info: Dict[str, Any]):
+        """Return the 10-Q filing whose period_of_report is closest to the
+        calendar quarter-end. Tolerates ±45 days so non-calendar fiscal
+        quarters (e.g. Apple's late-Sep Q4) still resolve correctly."""
+        from datetime import date
+
+        try:
+            expected = pd.to_datetime(quarter_info["expected_end"]).date()
+        except Exception:
+            return None
+
+        best = None
+        best_delta = None
+        try:
+            for filing in filings:
+                report_date_str = _date_str(getattr(filing, "report_date", "")) \
+                    or _date_str(getattr(filing, "period_of_report", ""))
+                if not report_date_str:
+                    continue
+                try:
+                    rd = pd.to_datetime(report_date_str).date()
+                except Exception:
+                    continue
+                delta = abs((rd - expected).days)
+                if delta > 45:
+                    continue
+                if best is None or delta < best_delta:
+                    best = filing
+                    best_delta = delta
+        except Exception as exc:
+            logger.warning("Error scanning quarterly filings: %s", exc)
+        if best is None:
+            logger.warning(
+                "No 10-Q within 45d of %s (looking for %s)",
+                quarter_info["expected_end"], quarter_info["label"]
+            )
+        return best
 
     @staticmethod
     def _extract_financials(filing) -> Optional[Financials]:
@@ -222,11 +324,24 @@ class SECService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _statement_dataframe(statement) -> Optional[pd.DataFrame]:
+    def _statement_dataframe(
+        statement, period_filter: Optional[str] = None
+    ) -> Optional[pd.DataFrame]:
         if statement is None:
             return None
         try:
-            df = statement.to_dataframe()
+            if period_filter:
+                df = statement.to_dataframe(period_filter=period_filter)
+            else:
+                df = statement.to_dataframe()
+        except TypeError:
+            # Older edgartools versions don't accept period_filter — fall back
+            # to the unscoped frame and let the caller pick a column.
+            try:
+                df = statement.to_dataframe()
+            except Exception as exc:
+                logger.warning("to_dataframe failed: %s", exc)
+                return None
         except Exception as exc:
             logger.warning("to_dataframe failed: %s", exc)
             return None
@@ -245,15 +360,19 @@ class SECService:
         return df
 
     def _statement_to_concepts(
-        self, statement, period: str
+        self, statement, period: str, period_filter: Optional[str] = None
     ) -> Dict[str, Dict[str, Any]]:
         """Flatten a Statement into {key: {value, label, period, fiscal_year}}.
 
         Keys prefer edgartools' `standard_concept` (stable across companies —
         e.g. "Revenue", "NetIncome", "AllEquityBalance"); rows without a
         standard_concept fall back to the cleaned us-gaap concept name.
+        When `period_filter` is provided (a key from xbrl.reporting_periods
+        like `duration_2024-04-01_2024-06-30`), the resulting dataframe is
+        scoped to just that period — used for 10-Q to pick the 3-month
+        duration column instead of the YTD column.
         """
-        df = self._statement_dataframe(statement)
+        df = self._statement_dataframe(statement, period_filter=period_filter)
         if df is None:
             return {}
 
@@ -318,6 +437,56 @@ class SECService:
     # Public: single-period financial statements
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _quarter_period_keys(
+        xbrl, quarter_info: Dict[str, Any]
+    ) -> Dict[str, Optional[str]]:
+        """Pick xbrl.reporting_periods keys for a single quarter.
+
+        For income/cashflow we want the 3-month duration ending at the
+        quarter-end (~91 days). For balance sheet we want the instant on
+        the quarter-end. Both fall back to the closest available period
+        within ±45 days to handle non-calendar fiscal quarters.
+        """
+        out = {"duration": None, "instant": None}
+        try:
+            target = pd.to_datetime(quarter_info["expected_end"]).date()
+        except Exception:
+            return out
+        try:
+            periods = xbrl.reporting_periods or []
+        except Exception:
+            return out
+
+        best_dur, best_dur_score = None, None
+        best_inst, best_inst_score = None, None
+        for p in periods:
+            ptype = p.get("type")
+            try:
+                if ptype == "duration":
+                    end = pd.to_datetime(p.get("end_date")).date()
+                    date_delta = abs((end - target).days)
+                    if date_delta > 45:
+                        continue
+                    days_off = abs((p.get("days") or 0) - 91)
+                    score = (date_delta, days_off)
+                    if best_dur is None or score < best_dur_score:
+                        best_dur, best_dur_score = p, score
+                elif ptype == "instant":
+                    d = pd.to_datetime(p.get("date")).date()
+                    delta = abs((d - target).days)
+                    if delta > 45:
+                        continue
+                    if best_inst is None or delta < best_inst_score:
+                        best_inst, best_inst_score = p, delta
+            except Exception:
+                continue
+        if best_dur is not None:
+            out["duration"] = best_dur.get("key")
+        if best_inst is not None:
+            out["instant"] = best_inst.get("key")
+        return out
+
     def get_financial_statements(
         self, cik: str, report_type: str, period: str
     ) -> Dict[str, Any]:
@@ -333,15 +502,31 @@ class SECService:
         if financials is None:
             return {}
 
+        # Quarterly 10-Q: scope each statement to a specific reporting_period
+        # so we pull the 3-month duration column (income/cashflow) and the
+        # quarter-end instant (balance sheet) — never the YTD column.
+        quarter_info = (
+            _parse_quarter_period(period)
+            if str(report_type).upper() == "10-Q" else None
+        )
+        keys: Dict[str, Optional[str]] = {"duration": None, "instant": None}
+        if quarter_info and getattr(financials, "xb", None) is not None:
+            keys = self._quarter_period_keys(financials.xb, quarter_info)
+            if not keys["duration"] and not keys["instant"]:
+                logger.warning(
+                    "No matching xbrl period for %s %s; falling back to unscoped frame",
+                    cik, quarter_info["label"]
+                )
+
         return {
             "income_statement": self._statement_to_concepts(
-                financials.income_statement(), period
+                financials.income_statement(), period, period_filter=keys["duration"]
             ),
             "balance_sheet": self._statement_to_concepts(
-                financials.balance_sheet(), period
+                financials.balance_sheet(), period, period_filter=keys["instant"]
             ),
             "cash_flow": self._statement_to_concepts(
-                financials.cash_flow_statement(), period
+                financials.cash_flow_statement(), period, period_filter=keys["duration"]
             ),
             "metadata": {
                 "cik": str(cik),
@@ -419,12 +604,15 @@ class SECService:
     # ------------------------------------------------------------------
 
     def GetMultiParsedData(
-        self, ciks: List[str], years: List[str]
+        self, ciks: List[str], years: List[str], report_type: str = "10-K"
     ) -> Dict[str, Any]:
         """Return sectioned statement rows for NewTrendTable.jsx.
 
         Shape matches the original GetMultiParsedData output so the frontend
-        does not need to change.
+        does not need to change. `years` may be either annual labels
+        ("2024") or quarterly labels ("Q2 2024") — we route 10-Q periods
+        through the quarter-aware filing matcher and dataframe scoping so
+        each column carries the correct 3-month value rather than YTD.
         """
         result: Dict[str, Any] = {
             "companies": [],
@@ -438,7 +626,9 @@ class SECService:
 
         for cik in ciks:
             try:
-                result["companies"].append(self._fetch_sectioned_company(cik, years))
+                result["companies"].append(
+                    self._fetch_sectioned_company(cik, years, report_type)
+                )
                 result["summary"]["companies_processed"] += 1
             except Exception as exc:
                 logger.warning("GetMultiParsedData failed for %s: %s", cik, exc)
@@ -447,23 +637,37 @@ class SECService:
         return result
 
     def _fetch_sectioned_company(
-        self, cik: str, years: List[str]
+        self, cik: str, years: List[str], report_type: str = "10-K"
     ) -> Dict[str, Any]:
         company = Company(str(cik))
+        is_quarterly = str(report_type).upper() == "10-Q"
 
         # Cache (year -> statement_type -> dataframe) so each statement is read once.
         per_year: Dict[str, Dict[str, Optional[pd.DataFrame]]] = {}
         for year in years:
-            filing = self._find_filing(cik, "10-K", year)
+            filing = self._find_filing(cik, report_type, year)
             if filing is None:
                 continue
             financials = self._extract_financials(filing)
             if financials is None:
                 continue
+
+            keys: Dict[str, Optional[str]] = {"duration": None, "instant": None}
+            if is_quarterly:
+                quarter_info = _parse_quarter_period(year)
+                if quarter_info and getattr(financials, "xb", None) is not None:
+                    keys = self._quarter_period_keys(financials.xb, quarter_info)
+
             per_year[year] = {
-                "income_statement": self._statement_dataframe(financials.income_statement()),
-                "balance_sheet": self._statement_dataframe(financials.balance_sheet()),
-                "cash_flow": self._statement_dataframe(financials.cash_flow_statement()),
+                "income_statement": self._statement_dataframe(
+                    financials.income_statement(), period_filter=keys["duration"]
+                ),
+                "balance_sheet": self._statement_dataframe(
+                    financials.balance_sheet(), period_filter=keys["instant"]
+                ),
+                "cash_flow": self._statement_dataframe(
+                    financials.cash_flow_statement(), period_filter=keys["duration"]
+                ),
             }
 
         categorized: Dict[str, Dict[str, List[Dict[str, Any]]]] = {
