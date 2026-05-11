@@ -3,7 +3,7 @@ import axios from "axios";
 import globalConfig from '../../global/globalConfig.json'
 import { useState } from "react";
 import { filterUsGaap, organizeItemsBySections, TableDiff, usdFormatter } from "../../Helpers/TableHelpers";
-import { IconBrightnessDown, IconBuildingBank, IconChevronLeft, IconChevronRight, IconLogout, IconMoon, IconSearch, IconSettings, IconX } from "@tabler/icons-react";
+import { IconBrightnessDown, IconChevronLeft, IconChevronRight, IconLogout, IconMoon, IconSearch, IconSettings, IconX } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import FinancialComparisonTable from "./Components/RatioAnalysis";
 import FinancialStatementViewer from "./Components/NewTrendTable";
@@ -11,7 +11,6 @@ import DCFAnalysis from "./Components/DCFAnalysis";
 import Segments from "./Components/Segments";
 import CommonSize from "./Components/CommonSize";
 import KPIStrip from "./Components/KPIStrip";
-import BankingSector from "./Components/BankingSector";
 import { UnitsContext } from "../../Utilities/UnitsContext";
 import { UNIT_OPTIONS } from "../../Utilities/formatters";
 
@@ -69,7 +68,6 @@ const AppHome = () => {
     const [commonSizeData, setCommonSizeData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [units, setUnits] = useState('auto');
-    const [activeView, setActiveView] = useState('equity');
     const [prefsOpen, setPrefsOpen] = useState(false);
     const [railCollapsed, setRailCollapsed] = useState(false);
     const STATEMENT_TABS = ['Balance Sheet', 'Income Statement', 'Cash Flow Statement'];
@@ -112,7 +110,6 @@ const AppHome = () => {
         if (!inputs) return;
 
         setPrefsOpen(false);
-        setActiveView('equity');
         setLoading(true);
         const calls = [getRatioAnalysis()];
         if (activeTab === 'Segments') calls.push(getSegments());
@@ -526,16 +523,6 @@ const AppHome = () => {
                                 <IconSettings size={22} />
                             </ActionIcon>
                         </Tooltip>
-                        <Tooltip label="Banking Sector" position="right" withArrow>
-                            <ActionIcon
-                                size="xl"
-                                variant={activeView === 'banking' ? 'filled' : 'subtle'}
-                                onClick={() => setActiveView('banking')}
-                                aria-label="Banking Sector"
-                            >
-                                <IconBuildingBank size={22} />
-                            </ActionIcon>
-                        </Tooltip>
                     </Stack>
                     <Tooltip label={colorScheme === 'dark' ? 'Light mode' : 'Dark mode'} position="right" withArrow>
                         <ActionIcon
@@ -650,58 +637,52 @@ const AppHome = () => {
             </Drawer>
 
             <AppShell.Main>
-                {activeView === 'equity' ? (
-                    <>
-                        <KPIStrip
-                            data={ratioTable}
-                            loading={loading}
-                            ticker={tickers[0]?.ticker}
-                        />
-                        <Tabs value={activeTab} onChange={setActiveTab}>
-                            <Tabs.List>
-                                <Tabs.Tab value="Balance Sheet">Balance Sheet</Tabs.Tab>
-                                <Tabs.Tab value="Income Statement">Income Statement</Tabs.Tab>
-                                <Tabs.Tab value="Cash Flow Statement">Cash Flow Statement</Tabs.Tab>
-                                <Tabs.Tab value="Ratio Analysis">Ratio Analysis</Tabs.Tab>
-                                <Tabs.Tab value="Segments">Segments</Tabs.Tab>
-                                <Tabs.Tab value="Common Size">Common Size</Tabs.Tab>
-                                <Tabs.Tab value="DCF">DCF</Tabs.Tab>
-                            </Tabs.List>
+                <KPIStrip
+                    data={ratioTable}
+                    loading={loading}
+                    ticker={tickers[0]?.ticker}
+                />
+                <Tabs value={activeTab} onChange={setActiveTab}>
+                    <Tabs.List>
+                        <Tabs.Tab value="Balance Sheet">Balance Sheet</Tabs.Tab>
+                        <Tabs.Tab value="Income Statement">Income Statement</Tabs.Tab>
+                        <Tabs.Tab value="Cash Flow Statement">Cash Flow Statement</Tabs.Tab>
+                        <Tabs.Tab value="Ratio Analysis">Ratio Analysis</Tabs.Tab>
+                        <Tabs.Tab value="Segments">Segments</Tabs.Tab>
+                        <Tabs.Tab value="Common Size">Common Size</Tabs.Tab>
+                        <Tabs.Tab value="DCF">DCF</Tabs.Tab>
+                    </Tabs.List>
 
-                            <Tabs.Panel value="Balance Sheet">
-                                <FinancialStatementViewer data={simpleTickerData} statementType="balance_sheet" />
-                            </Tabs.Panel>
-                            <Tabs.Panel value="Income Statement">
-                                <FinancialStatementViewer data={simpleTickerData} statementType="income_statement" />
-                            </Tabs.Panel>
-                            <Tabs.Panel value="Cash Flow Statement">
-                                <FinancialStatementViewer data={simpleTickerData} statementType="cash_flow" />
-                            </Tabs.Panel>
-                            <Tabs.Panel value="Ratio Analysis">
-                                <FinancialComparisonTable
-                                    data={showRatioTable ? ratioTable : null}
-                                    selectedTickers={tickers.map((x) => x.ticker)}
-                                    loading={loading}
-                                />
-                            </Tabs.Panel>
-                            <Tabs.Panel value="Segments">
-                                <Segments data={segmentsData} loading={loading} />
-                            </Tabs.Panel>
-                            <Tabs.Panel value="Common Size">
-                                <CommonSize data={commonSizeData} loading={loading} />
-                            </Tabs.Panel>
-                            <Tabs.Panel value="DCF">
-                                <DCFAnalysis
-                                    ticker={tickers[0]?.ticker}
-                                    reportType={reportType}
-                                    period={years[0]?.year}
-                                />
-                            </Tabs.Panel>
-                        </Tabs>
-                    </>
-                ) : (
-                    <BankingSector />
-                )}
+                    <Tabs.Panel value="Balance Sheet">
+                        <FinancialStatementViewer data={simpleTickerData} statementType="balance_sheet" />
+                    </Tabs.Panel>
+                    <Tabs.Panel value="Income Statement">
+                        <FinancialStatementViewer data={simpleTickerData} statementType="income_statement" />
+                    </Tabs.Panel>
+                    <Tabs.Panel value="Cash Flow Statement">
+                        <FinancialStatementViewer data={simpleTickerData} statementType="cash_flow" />
+                    </Tabs.Panel>
+                    <Tabs.Panel value="Ratio Analysis">
+                        <FinancialComparisonTable
+                            data={showRatioTable ? ratioTable : null}
+                            selectedTickers={tickers.map((x) => x.ticker)}
+                            loading={loading}
+                        />
+                    </Tabs.Panel>
+                    <Tabs.Panel value="Segments">
+                        <Segments data={segmentsData} loading={loading} />
+                    </Tabs.Panel>
+                    <Tabs.Panel value="Common Size">
+                        <CommonSize data={commonSizeData} loading={loading} />
+                    </Tabs.Panel>
+                    <Tabs.Panel value="DCF">
+                        <DCFAnalysis
+                            ticker={tickers[0]?.ticker}
+                            reportType={reportType}
+                            period={years[0]?.year}
+                        />
+                    </Tabs.Panel>
+                </Tabs>
             </AppShell.Main>
         </AppShell>
     </UnitsContext.Provider>)

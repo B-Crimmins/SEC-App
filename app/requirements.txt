@@ -15,7 +15,3 @@ psycopg2-binary==2.9.11
 email-validator==2.3.0
 python-multipart==0.0.20
 edgartools
-google-cloud-storage
-google-cloud-bigquery
-pyarrow
-gcsfs

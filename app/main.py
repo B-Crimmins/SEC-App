@@ -13,7 +13,6 @@ from api import (
     analysis_router,
     subscriptions_router,
     export_router,
-    ffiec_router,
 )
 
 
@@ -56,7 +55,6 @@ app.include_router(financials_router)
 app.include_router(analysis_router)
 app.include_router(subscriptions_router)
 app.include_router(export_router)
-app.include_router(ffiec_router)
 
 
 @app.get("/")
