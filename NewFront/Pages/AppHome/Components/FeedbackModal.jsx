@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Modal, Stack, TextInput, Textarea, Button, Group } from '@mantine/core';
 import axios from 'axios';
 import globalConfig from '../../../global/globalConfig.json';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../../src/components/ui/dialog';
+import { Input } from '../../../src/components/ui/input';
+import { Textarea } from '../../../src/components/ui/textarea';
+import { Label } from '../../../src/components/ui/label';
+import { Button } from '../../../src/components/ui/button';
+import { Spinner } from '../../../src/components/ui/spinner';
 
-// POST /api/feedback. Backend ties the entry to the JWT user, so this
-// component only owns the form fields and submission state — no email
-// or identity input here.
 const FeedbackModal = ({ opened, onClose }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -51,41 +53,45 @@ const FeedbackModal = ({ opened, onClose }) => {
   };
 
   return (
-    <Modal opened={opened} onClose={close} title="Send Feedback" centered>
-      <Stack>
-        <TextInput
-          label="Title"
-          placeholder="One-line summary"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-          maxLength={200}
-          disabled={submitting}
-        />
-        <Textarea
-          label="Description"
-          placeholder="Tell us what to build next?"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          required
-          autosize
-          minRows={4}
-          maxRows={10}
-          disabled={submitting}
-        />
-        {error && (
-          <div style={{ color: 'var(--mantine-color-red-6)', fontSize: 12 }}>{error}</div>
-        )}
-        <Group justify="flex-end" gap="sm">
-          <Button variant="default" onClick={close} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button onClick={submit} loading={submitting}>
+    <Dialog open={opened} onOpenChange={(o) => !o && close()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Send Feedback</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="feedback-title">Title</Label>
+            <Input
+              id="feedback-title"
+              placeholder="One-line summary"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={200}
+              disabled={submitting}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="feedback-desc">Description</Label>
+            <Textarea
+              id="feedback-desc"
+              placeholder="Tell us what to build next?"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={6}
+              disabled={submitting}
+            />
+          </div>
+          {error && <div className="text-xs text-loss">{error}</div>}
+        </div>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button variant="outline" onClick={close} disabled={submitting}>Cancel</Button>
+          <Button onClick={submit} disabled={submitting}>
+            {submitting && <Spinner size="sm" className="mr-1.5" />}
             Submit
           </Button>
-        </Group>
-      </Stack>
-    </Modal>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

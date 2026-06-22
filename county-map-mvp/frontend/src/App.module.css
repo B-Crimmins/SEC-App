@@ -1,0 +1,26 @@
+.error {
+  background: #fee2e2;
+  color: #7f1d1d;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.loading {
+  color: #6b7280;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.empty {
+  background: #fef9c3;
+  color: #713f12;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.ingestMsg {
+  color: #166534;
+}

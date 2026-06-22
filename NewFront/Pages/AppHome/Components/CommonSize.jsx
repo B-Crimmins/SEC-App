@@ -100,7 +100,7 @@ const SkeletonRow = () => (
         style={{
           height: 12,
           flex: 1,
-          background: 'var(--mantine-color-gray-2)',
+          background: 'hsl(var(--muted))',
           borderRadius: 4,
         }}
       />

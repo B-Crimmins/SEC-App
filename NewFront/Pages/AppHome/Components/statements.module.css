@@ -1,14 +1,13 @@
-/* Shared styles for statement/ratio/DCF tables. Uses Mantine theme vars so
-   the existing dark/light toggle keeps working without any Mantine JSX. */
+/* Shared styles for statement/ratio/DCF tables. Uses the ShadCN design
+   tokens defined in src/index.css so dark/light toggle works via the
+   `.dark` class on the root. */
 
 .card {
-  background: var(--mantine-color-body);
-  border: 1px solid var(--mantine-color-gray-3);
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
   border-radius: 8px;
   padding: 16px;
-}
-:global([data-mantine-color-scheme="dark"]) .card {
-  border-color: var(--mantine-color-dark-4);
+  color: hsl(var(--card-foreground));
 }
 
 .cardTitle {
@@ -26,10 +25,7 @@
 .sectionSub {
   margin: 0 0 14px;
   font-size: 12px;
-  color: var(--mantine-color-gray-6);
-}
-:global([data-mantine-color-scheme="dark"]) .sectionSub {
-  color: var(--mantine-color-gray-5);
+  color: hsl(var(--muted-foreground));
 }
 
 .stack { display: flex; flex-direction: column; gap: 16px; }
@@ -48,71 +44,48 @@
   padding: 8px 10px;
   font-weight: 600;
   font-size: 12px;
-  color: var(--mantine-color-gray-7);
-  border-bottom: 1px solid var(--mantine-color-gray-3);
+  color: hsl(var(--muted-foreground));
+  border-bottom: 1px solid hsl(var(--border));
   white-space: nowrap;
 }
 .table td {
   padding: 7px 10px;
-  border-bottom: 1px solid var(--mantine-color-gray-2);
+  border-bottom: 1px solid hsl(var(--border));
   font-variant-numeric: tabular-nums;
 }
-.table tbody tr:hover { background: var(--mantine-color-gray-0); }
+.table tbody tr:hover { background: hsl(var(--card-hover)); }
 
-:global([data-mantine-color-scheme="dark"]) .table th { color: var(--mantine-color-gray-5); border-bottom-color: var(--mantine-color-dark-4); }
-:global([data-mantine-color-scheme="dark"]) .table td { border-bottom-color: var(--mantine-color-dark-5); }
-:global([data-mantine-color-scheme="dark"]) .table tbody tr:hover { background: var(--mantine-color-dark-6); }
-
-/* `.table th` sets text-align: left at (0,1,1), so a bare `.numHead` (0,1,0)
-   gets out-specced and the year headers silently render left-aligned while
-   the body cells are right-aligned — that's the column-misalignment bug.
-   Compound `.table th.numHead` matches the parent rule's specificity and
-   lets text-align: right win. Same fix for `.num` on the off chance someone
-   later adds a text-align to `.table td`. */
 .num,
 .table td.num { text-align: right; font-variant-numeric: tabular-nums; padding-right: 14px; }
 .numHead,
 .table th.numHead { text-align: right; font-variant-numeric: tabular-nums; padding-right: 14px; }
 .label { font-weight: 500; }
 
-/* table-layout: fixed lets <colgroup> widths win, so period columns are the
-   same width regardless of how long the line-item labels are. */
 .tableFixed { table-layout: fixed; }
 .colNum { width: 140px; }
 @media (max-width: 760px) { .colNum { width: 110px; } }
 
-/* Section header row — collapses per-category sub-tables into a single table */
 .sectionRow td {
-  background: var(--mantine-color-gray-1);
-  color: var(--mantine-color-gray-8);
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
   font-weight: 700;
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 10px 10px 8px;
-  border-top: 1px solid var(--mantine-color-gray-3);
-  border-bottom: 1px solid var(--mantine-color-gray-3);
+  border-top: 1px solid hsl(var(--border));
+  border-bottom: 1px solid hsl(var(--border));
 }
-:global([data-mantine-color-scheme="dark"]) .sectionRow td {
-  background: var(--mantine-color-dark-6);
-  color: var(--mantine-color-gray-3);
-  border-color: var(--mantine-color-dark-4);
-}
-.sectionRow:hover td { background: var(--mantine-color-gray-1); }
-:global([data-mantine-color-scheme="dark"]) .sectionRow:hover td { background: var(--mantine-color-dark-6); }
+.sectionRow:hover td { background: hsl(var(--muted)); }
 
 .subSectionRow td {
   font-weight: 600;
   padding: 8px 10px 4px;
   font-size: 12px;
-  color: var(--mantine-color-gray-7);
+  color: hsl(var(--muted-foreground));
   background: transparent;
-  border-top: 1px solid var(--mantine-color-gray-2);
+  border-top: 1px solid hsl(var(--border));
   text-decoration: underline;
-}
-:global([data-mantine-color-scheme="dark"]) .subSectionRow td {
-  color: var(--mantine-color-gray-4);
-  border-top-color: var(--mantine-color-dark-5);
 }
 .subSectionRow:hover td { background: transparent; }
 
@@ -121,8 +94,8 @@
 
 /* ---------- buttons / inputs ---------- */
 .btn {
-  background: var(--mantine-color-blue-6);
-  color: white;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
   border: 0;
   border-radius: 6px;
   padding: 8px 16px;
@@ -130,28 +103,26 @@
   font-weight: 500;
   cursor: pointer;
 }
-.btn:hover { background: var(--mantine-color-blue-7); }
+.btn:hover { background: hsl(var(--primary) / 0.9); }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .inputRoot { display: flex; flex-direction: column; gap: 4px; }
 .inputLabel { font-size: 13px; font-weight: 500; }
-.inputDesc { font-size: 11px; color: var(--mantine-color-gray-6); }
-:global([data-mantine-color-scheme="dark"]) .inputDesc { color: var(--mantine-color-gray-5); }
+.inputDesc { font-size: 11px; color: hsl(var(--muted-foreground)); }
 .input {
-  background: var(--mantine-color-body);
-  border: 1px solid var(--mantine-color-gray-4);
+  background: hsl(var(--input));
+  border: 1px solid hsl(var(--border));
   border-radius: 6px;
   padding: 7px 10px;
   font-size: 13px;
-  color: inherit;
+  color: hsl(var(--foreground));
   outline: none;
   font-variant-numeric: tabular-nums;
 }
 .input:focus {
-  border-color: var(--mantine-color-blue-5);
-  box-shadow: 0 0 0 2px rgba(34, 139, 230, 0.2);
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
 }
-:global([data-mantine-color-scheme="dark"]) .input { border-color: var(--mantine-color-dark-4); background: var(--mantine-color-dark-6); }
 
 /* ---------- grid layouts ---------- */
 .grid2  { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
@@ -164,18 +135,16 @@
 .alertError {
   padding: 10px 14px;
   border-radius: 6px;
-  border: 1px solid var(--mantine-color-red-5);
-  background: rgba(250, 82, 82, 0.08);
-  color: var(--mantine-color-red-7);
+  border: 1px solid hsl(var(--loss) / 0.5);
+  background: hsl(var(--loss) / 0.1);
+  color: hsl(var(--loss));
   font-size: 13px;
 }
-:global([data-mantine-color-scheme="dark"]) .alertError { color: var(--mantine-color-red-4); }
 
-.dim { color: var(--mantine-color-gray-6); font-size: 13px; }
-:global([data-mantine-color-scheme="dark"]) .dim { color: var(--mantine-color-gray-5); }
+.dim { color: hsl(var(--muted-foreground)); font-size: 13px; }
 .mono { font-variant-numeric: tabular-nums; }
 
-.valuePositive { color: var(--mantine-color-teal-7); font-weight: 600; }
+.valuePositive { color: hsl(var(--gain)); font-weight: 600; }
 
 /* ---------- popover ---------- */
 .popTarget {
@@ -186,28 +155,21 @@
   line-height: 1.2;
   transition: background-color 120ms ease;
 }
-.popTarget:hover, .popOpen { background-color: var(--mantine-color-gray-2); }
-:global([data-mantine-color-scheme="dark"]) .popTarget:hover,
-:global([data-mantine-color-scheme="dark"]) .popOpen { background-color: var(--mantine-color-dark-5); }
+.popTarget:hover, .popOpen { background-color: hsl(var(--card-hover)); }
 
 .popPanel {
-  background: var(--mantine-color-body);
-  border: 1px solid var(--mantine-color-gray-3);
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  border: 1px solid hsl(var(--border));
   border-radius: 6px;
   padding: 10px 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
   font-size: 12px;
   line-height: 1.45;
 }
-:global([data-mantine-color-scheme="dark"]) .popPanel {
-  border-color: var(--mantine-color-dark-4);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
-}
 .popTitle { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
-.popDim { color: var(--mantine-color-gray-6); }
-:global([data-mantine-color-scheme="dark"]) .popDim { color: var(--mantine-color-gray-5); }
-.popDivider { height: 1px; background: var(--mantine-color-gray-3); margin: 6px 0; }
-:global([data-mantine-color-scheme="dark"]) .popDivider { background: var(--mantine-color-dark-4); }
+.popDim { color: hsl(var(--muted-foreground)); }
+.popDivider { height: 1px; background: hsl(var(--border)); margin: 6px 0; }
 
-.deltaUp   { color: var(--mantine-color-teal-7); font-weight: 600; }
-.deltaDown { color: var(--mantine-color-red-7); font-weight: 600; }
+.deltaUp   { color: hsl(var(--gain)); font-weight: 600; }
+.deltaDown { color: hsl(var(--loss)); font-weight: 600; }

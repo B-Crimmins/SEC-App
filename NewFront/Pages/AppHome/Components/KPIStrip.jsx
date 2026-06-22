@@ -1,16 +1,17 @@
-import React from 'react';
-import { Group, Paper, SimpleGrid, Skeleton, Stack, Text } from '@mantine/core';
 import Sparkline from './Sparkline';
 import { formatCurrency, formatPercent } from '../../../Utilities/formatters';
 import { useUnits } from '../../../Utilities/UnitsContext';
+import { Card } from '../../../src/components/ui/card';
+import { Skeleton } from '../../../src/components/ui/skeleton';
+import { cn } from '../../../src/lib/utils';
 
 const METRICS = [
-  { key: 'revenue',              label: 'Revenue',            format: 'currency' },
-  { key: 'gross_profit_margin',  label: 'Gross Margin',       format: 'percent'  },
-  { key: 'net_margin',           label: 'Net Margin',         format: 'percent'  },
-  { key: 'free_cash_flow',       label: 'Free Cash Flow',     format: 'currency' },
-  { key: 'roe',                  label: 'Return on Equity',   format: 'percent'  },
-  { key: 'earnings_per_share',   label: 'EPS',                format: 'eps'      },
+  { key: 'revenue',              label: 'Revenue',           format: 'currency' },
+  { key: 'gross_profit_margin',  label: 'Gross Margin',      format: 'percent'  },
+  { key: 'net_margin',           label: 'Net Margin',        format: 'percent'  },
+  { key: 'free_cash_flow',       label: 'Free Cash Flow',    format: 'currency' },
+  { key: 'roe',                  label: 'Return on Equity',  format: 'percent'  },
+  { key: 'earnings_per_share',   label: 'EPS',               format: 'eps'      },
 ];
 
 const formatValue = (value, format, units) => {
@@ -21,13 +22,11 @@ const formatValue = (value, format, units) => {
 };
 
 const KPICardSkeleton = () => (
-  <Paper withBorder p="sm" radius="md">
-    <Stack gap={6}>
-      <Skeleton height={10} width="60%" />
-      <Skeleton height={22} width="80%" />
-      <Skeleton height={16} />
-    </Stack>
-  </Paper>
+  <Card className="p-3 space-y-2">
+    <Skeleton className="h-2.5 w-3/5" />
+    <Skeleton className="h-5 w-4/5" />
+    <Skeleton className="h-4 w-full" />
+  </Card>
 );
 
 const KPIStrip = ({ data, loading, ticker }) => {
@@ -38,9 +37,11 @@ const KPIStrip = ({ data, loading, ticker }) => {
 
   if (loading && !hasData) {
     return (
-      <SimpleGrid cols={{ base: 2, sm: 3, md: 6 }} spacing="sm" mb="md">
-        {METRICS.map((m) => <KPICardSkeleton key={m.key} />)}
-      </SimpleGrid>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 mb-4">
+        {METRICS.map((m) => (
+          <KPICardSkeleton key={m.key} />
+        ))}
+      </div>
     );
   }
 
@@ -58,63 +59,50 @@ const KPIStrip = ({ data, loading, ticker }) => {
   const companyLabel = company.company_name || t || 'Primary ticker';
 
   return (
-    <Stack gap={4} mb="md">
-      <Group justify="space-between" align="baseline">
-        <Text size="xs" c="dimmed" fw={500} tt="uppercase" lts={0.5}>
+    <div className="mb-4 space-y-1">
+      <div className="flex items-baseline justify-between">
+        <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {companyLabel} · {latest}
-        </Text>
-        {loading && <Text size="xs" c="dimmed">Refreshing…</Text>}
-      </Group>
-      <SimpleGrid cols={{ base: 2, sm: 3, md: 6 }} spacing="sm">
+        </div>
+        {loading && <div className="text-xs text-muted-foreground">Refreshing…</div>}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
         {METRICS.map((m) => {
           const series = periods
             .map((p) => company.periods[p]?.ratios?.[m.key]?.value)
             .filter((v) => typeof v === 'number');
 
           const latestVal = company.periods[latest]?.ratios?.[m.key]?.value;
-          const prevVal = previous
-            ? company.periods[previous]?.ratios?.[m.key]?.value
-            : null;
+          const prevVal = previous ? company.periods[previous]?.ratios?.[m.key]?.value : null;
 
           let deltaPct = null;
-          if (
-            typeof latestVal === 'number' &&
-            typeof prevVal === 'number' &&
-            prevVal !== 0
-          ) {
+          if (typeof latestVal === 'number' && typeof prevVal === 'number' && prevVal !== 0) {
             deltaPct = ((latestVal - prevVal) / Math.abs(prevVal)) * 100;
           }
-          const deltaColor = deltaPct === null
-            ? undefined
-            : deltaPct >= 0 ? 'teal.7' : 'red.7';
 
           return (
-            <Paper key={m.key} withBorder p="sm" radius="md">
-              <Stack gap={4}>
-                <Text size="xs" c="dimmed" fw={500}>{m.label}</Text>
-                <Text
-                  size="lg"
-                  fw={700}
-                  style={{ fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}
-                >
+            <Card key={m.key} className="p-3">
+              <div className="space-y-1">
+                <div className="text-xs font-medium text-muted-foreground">{m.label}</div>
+                <div className="text-lg font-bold tabular-nums leading-tight">
                   {formatValue(latestVal, m.format, units)}
-                </Text>
-                <Group justify="space-between" gap="xs" wrap="nowrap" align="center">
+                </div>
+                <div className="flex items-center justify-between gap-2">
                   {deltaPct !== null ? (
-                    <Text size="xs" c={deltaColor} fw={600}>
+                    <span className={cn('text-xs font-semibold', deltaPct >= 0 ? 'text-gain' : 'text-loss')}>
                       {deltaPct >= 0 ? '+' : ''}{deltaPct.toFixed(1)}% YoY
-                    </Text>
+                    </span>
                   ) : (
-                    <Text size="xs" c="dimmed">—</Text>
+                    <span className="text-xs text-muted-foreground">—</span>
                   )}
                   <Sparkline values={series} />
-                </Group>
-              </Stack>
-            </Paper>
+                </div>
+              </div>
+            </Card>
           );
         })}
-      </SimpleGrid>
-    </Stack>
+      </div>
+    </div>
   );
 };
 

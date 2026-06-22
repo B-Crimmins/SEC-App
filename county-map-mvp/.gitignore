@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env.local
+frontend/*.tsbuildinfo
+frontend/vite.config.d.ts
+frontend/vite.config.js
+
+# Data
+backend/app/data/raw/*
+!backend/app/data/raw/.gitkeep
+backend/app/data/processed/*
+!backend/app/data/processed/.gitkeep
+
+# County TopoJSON (vendored only on demand; see frontend/public/counties.README.md)
+frontend/public/counties-10m.json
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

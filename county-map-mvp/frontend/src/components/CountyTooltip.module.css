@@ -1,0 +1,48 @@
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  background: rgba(17, 24, 39, 0.95);
+  color: #f9fafb;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  min-width: 200px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fips {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table td {
+  padding: 2px 0;
+}
+
+.value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.active {
+  color: #fde68a;
+}
+
+.empty {
+  color: #d1d5db;
+  font-style: italic;
+}

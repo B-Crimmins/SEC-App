@@ -10,12 +10,13 @@ from services.user_service import UserService
 from services.financial_ratios import FinancialRatioCalculator
 from services.segment_analysis import SegmentAnalysisService
 from services.common_size import calculate_common_size_multi_period
-from services.peer_scorecard import PeerScorecardService
+from services.relative_valuation import RelativeValuationService
 from services import screener_cache
+from schemas.relative_valuation import RelativeValuationRequest
 from models.user import User
 from models.financial_report import FinancialReport
 from models.analysis import Analysis
-from schemas.analysis import AnalysisResponse, AnalysisRequest, TrendAnalysisRequest, TrendAnalysisResponse, TrendRequestTest, DCFRequest, DCFResponse
+from schemas.analysis import AnalysisResponse, AnalysisRequest, TrendAnalysisRequest, TrendAnalysisResponse, TrendRequestTest, DCFRequest, DCFResponse, WACCRequest, WACCResponse, ReverseDCFRequest, ReverseDCFResponse
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
@@ -756,20 +757,271 @@ async def calculate_dcf(
         )
 
 
-@router.post("/peer-scorecard", response_model=Dict[str, Any])
-async def generate_peer_scorecard(
-    request: dict,
+@router.get("/companies/search")
+async def companies_search(
+    q: str = "",
+    limit: int = 20,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Typeahead autocomplete over the full SEC ticker → company list.
+
+    Returns up to `limit` rows, ranked: ticker-prefix > ticker-substring >
+    company-name-substring. Used by the ticker input combobox in the app
+    shell.
+    """
+    from services import ticker_index
+    safe_limit = max(1, min(int(limit or 20), 50))
+    try:
+        return ticker_index.search(q, limit=safe_limit)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ticker search failed: {e}",
+        )
+
+
+@router.post("/reverse-dcf", response_model=ReverseDCFResponse)
+async def reverse_dcf(
+    request: ReverseDCFRequest,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
-    """Quantitative peer scorecard for the Relative Valuation portal.
+    """Solve for the single DCF assumption that justifies the current
+    market price. Other three assumptions are held constant.
 
-    Request body: { tickers: [str, ...], industry_profile: "cyclical"|"asset_light" }
+    ``solve_for`` is one of: ``revenue_growth``, ``operating_margin``,
+    ``wacc``, ``terminal_growth``. Uses scipy.optimize.brentq.
+    """
+    user_service = UserService(db)
+    usage = user_service.check_api_usage_limit(cast(int, current_user.id))
+    if usage['exceeded']:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"API usage limit exceeded. Used: {usage['current_usage']}/{usage['limit']}",
+        )
 
-    Methodology is implemented in services/peer_scorecard.py per spec:
-    rank (0-50) + absolute (0-50; logistic for tail risk) per sub-metric,
-    weighted_mean - 0.5*sigma per pillar, composite by industry weights,
-    sensitivity over weight +/-10pp and threshold midpoint +/-20%.
+    sec_service = SECService()
+    companies_data = sec_service.search_companies(request.ticker)
+    if not companies_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Company with ticker {request.ticker} not found",
+        )
+    company_data = next(
+        (c for c in companies_data if c['ticker'].upper() == request.ticker.upper()),
+        None,
+    )
+    if not company_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Company with ticker {request.ticker} not found",
+        )
+
+    financial_report = db.query(FinancialReport).filter(
+        FinancialReport.user_id == current_user.id,
+        FinancialReport.ticker == request.ticker.upper(),
+        FinancialReport.report_type == request.report_type,
+        FinancialReport.period == request.period,
+    ).first()
+    if not financial_report:
+        financial_data = sec_service.get_financial_statements(
+            company_data['cik'], request.report_type, request.period,
+        )
+        if not financial_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"Financial data not found for {request.ticker} "
+                    f"{request.report_type} {request.period}"
+                ),
+            )
+        financial_report = FinancialReport(
+            user_id=current_user.id,
+            ticker=request.ticker.upper(),
+            company_name=company_data['company_name'],
+            report_type=request.report_type,
+            period=request.period,
+            income_statement=financial_data.get('income_statement', {}),
+            balance_sheet=financial_data.get('balance_sheet', {}),
+            cash_flow=financial_data.get('cash_flow', {}),
+            raw_data=str(financial_data),
+        )
+        db.add(financial_report)
+        db.commit()
+        db.refresh(financial_report)
+
+    financial_data = {
+        'income_statement': financial_report.income_statement,
+        'balance_sheet': financial_report.balance_sheet,
+        'cash_flow': financial_report.cash_flow,
+    }
+    try:
+        result = FinancialRatioCalculator().solve_reverse_dcf(
+            financial_data,
+            target_price=request.target_price,
+            solve_for=request.solve_for,
+            discount_rate=request.discount_rate,
+            interim_growth_rate=request.interim_growth_rate,
+            terminal_growth_rate=request.terminal_growth_rate,
+            forecast_periods=request.forecast_periods,
+            lower_bound=request.lower_bound,
+            upper_bound=request.upper_bound,
+        )
+        return ReverseDCFResponse(
+            ticker=financial_report.ticker,
+            company_name=financial_report.company_name,
+            report_type=financial_report.report_type,
+            period=financial_report.period,
+            target_price=request.target_price,
+            solve_for=request.solve_for,
+            **result,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error running reverse DCF: {e}",
+        )
+
+
+@router.post("/wacc", response_model=WACCResponse)
+async def calculate_wacc(
+    wacc_request: WACCRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Compute WACC for a single filing.
+
+    Capital structure (shares, long-term debt, interest expense, taxes,
+    pretax income) is pulled from the user's already-loaded financial
+    report (or fetched from EDGAR if not cached). The three market-side
+    inputs — beta, risk-free rate, expected market return — come from the
+    caller. Result includes the full breakdown so the UI can show the math.
+    """
+    user_service = UserService(db)
+    usage = user_service.check_api_usage_limit(cast(int, current_user.id))
+    if usage['exceeded']:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"API usage limit exceeded. Used: {usage['current_usage']}/{usage['limit']}",
+        )
+
+    sec_service = SECService()
+    companies_data = sec_service.search_companies(wacc_request.ticker)
+    if not companies_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Company with ticker {wacc_request.ticker} not found",
+        )
+
+    company_data = next(
+        (c for c in companies_data if c['ticker'].upper() == wacc_request.ticker.upper()),
+        None,
+    )
+    if not company_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Company with ticker {wacc_request.ticker} not found",
+        )
+
+    financial_report = db.query(FinancialReport).filter(
+        FinancialReport.user_id == current_user.id,
+        FinancialReport.ticker == wacc_request.ticker.upper(),
+        FinancialReport.report_type == wacc_request.report_type,
+        FinancialReport.period == wacc_request.period,
+    ).first()
+
+    if not financial_report:
+        financial_data = sec_service.get_financial_statements(
+            company_data['cik'],
+            wacc_request.report_type,
+            wacc_request.period,
+        )
+        if not financial_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"Financial data not found for {wacc_request.ticker} "
+                    f"{wacc_request.report_type} {wacc_request.period}"
+                ),
+            )
+        financial_report = FinancialReport(
+            user_id=current_user.id,
+            ticker=wacc_request.ticker.upper(),
+            company_name=company_data['company_name'],
+            report_type=wacc_request.report_type,
+            period=wacc_request.period,
+            income_statement=financial_data.get('income_statement', {}),
+            balance_sheet=financial_data.get('balance_sheet', {}),
+            cash_flow=financial_data.get('cash_flow', {}),
+            raw_data=str(financial_data),
+        )
+        db.add(financial_report)
+        db.commit()
+        db.refresh(financial_report)
+
+    ratio_calculator = FinancialRatioCalculator()
+    financial_data = {
+        'income_statement': financial_report.income_statement,
+        'balance_sheet': financial_report.balance_sheet,
+        'cash_flow': financial_report.cash_flow,
+    }
+    try:
+        result = ratio_calculator.compute_wacc(
+            financial_data,
+            beta=wacc_request.beta,
+            risk_free_rate=wacc_request.risk_free_rate,
+            expected_market_return=wacc_request.expected_market_return,
+            stock_price=wacc_request.stock_price,
+            cost_of_debt=wacc_request.cost_of_debt,
+            cost_of_preferred=wacc_request.cost_of_preferred,
+        )
+        return WACCResponse(
+            ticker=financial_report.ticker,
+            company_name=financial_report.company_name,
+            report_type=financial_report.report_type,
+            period=financial_report.period,
+            beta=wacc_request.beta,
+            risk_free_rate=wacc_request.risk_free_rate,
+            expected_market_return=wacc_request.expected_market_return,
+            stock_price=wacc_request.stock_price,
+            cost_of_debt=wacc_request.cost_of_debt,
+            cost_of_preferred=wacc_request.cost_of_preferred,
+            **result,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error computing WACC: {str(e)}",
+        )
+
+
+@router.post("/relative-valuation", response_model=Dict[str, Any])
+async def generate_relative_valuation(
+    request: RelativeValuationRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Three-layer relative valuation:
+
+      Layer 1 — suggest a peer set (SIC industry + size proximity), compute
+        EV/EBITDA / EV/EBIT / EV/Sales / P/E / P/B for target + peers, and
+        run the multiple-selection engine to recommend 2-3 trustworthy
+        multiples per company-specific rules.
+
+      Layer 2 — decompose target-vs-peer-median spread on each recommended
+        multiple into growth / margin / ROE attribution + an unexplained
+        residual.
+
+      Layer 3 — reconcile against the existing DCF. The frontend passes in
+        `dcf_per_share` from the user's DCF tab; the response carries the
+        peer-multiple-implied per-share alongside it for side-by-side
+        comparison.
+
+    Peer fundamentals (TTM EBITDA, revenue, etc.) come from yfinance —
+    SEC XBRL doesn't carry market data and TTM stitching from raw filings
+    would cost 5-7 fetches per peer.
     """
     user_service = UserService(db)
     usage = user_service.check_api_usage_limit(cast(int, current_user.id))
@@ -779,30 +1031,19 @@ async def generate_peer_scorecard(
             detail=f"API usage limit exceeded. Used: {usage['current_usage']}/{usage['limit']}",
         )
 
-    tickers = [t.strip().upper() for t in (request.get("tickers") or []) if isinstance(t, str) and t.strip()]
-    industry_profile = request.get("industry_profile")
-
-    if len(tickers) < 2:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="At least 2 tickers are required for a peer scorecard.",
-        )
-    if industry_profile not in ("cyclical", "asset_light"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="industry_profile must be 'cyclical' or 'asset_light'. "
-                   "For 'other', the user must specify weights — methodology requires explicit choice.",
-        )
-
     try:
-        service = PeerScorecardService()
-        return service.compute(tickers, industry_profile)
+        service = RelativeValuationService(db)
+        return service.compute(
+            target_ticker=request.ticker,
+            override_peers=request.override_peers,
+            dcf_per_share=request.dcf_per_share,
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error generating peer scorecard: {str(e)}",
+            detail=f"Error generating relative valuation: {str(e)}",
         )
 
 

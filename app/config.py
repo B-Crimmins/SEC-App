@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     # Security — loaded from .env; app fails fast if missing.
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 300
 
     # OpenAI — loaded from .env.
     OPENAI_API_KEY: Optional[str] = None

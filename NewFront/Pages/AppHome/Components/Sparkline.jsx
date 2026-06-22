@@ -1,5 +1,3 @@
-import React from 'react';
-
 const Sparkline = ({ values, width = 72, height = 22 }) => {
   const clean = (values || []).filter((v) => typeof v === 'number' && !Number.isNaN(v));
   if (clean.length < 2) return null;
@@ -20,9 +18,7 @@ const Sparkline = ({ values, width = 72, height = 22 }) => {
   const lastY = height - ((clean[lastIdx] - min) / range) * height;
 
   const trendUp = clean[lastIdx] >= clean[0];
-  const stroke = trendUp
-    ? 'var(--mantine-color-teal-6)'
-    : 'var(--mantine-color-red-6)';
+  const stroke = trendUp ? 'hsl(var(--gain))' : 'hsl(var(--loss))';
 
   return (
     <svg

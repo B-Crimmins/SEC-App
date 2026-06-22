@@ -1,7 +1,10 @@
-import React from 'react';
-import { Paper, Skeleton, Stack, Table, Text, Title } from '@mantine/core';
+import { useEffect, useState } from 'react';
 import { formatCurrency as sharedFormatCurrency } from '../../../Utilities/formatters';
 import { useUnits } from '../../../Utilities/UnitsContext';
+import { Card } from '../../../src/components/ui/card';
+import { Skeleton } from '../../../src/components/ui/skeleton';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../../../src/components/ui/table';
+import { cn } from '../../../src/lib/utils';
 
 const BUCKETS = [
   { key: 'geography', title: 'Geographic Segments' },
@@ -13,8 +16,6 @@ const buildBucketTable = (data, bucketKey) => {
   const periods = data?.periods || [];
   if (periods.length === 0) return null;
 
-  // Union of all labels across periods (filing-scoped, so some periods may
-  // introduce or drop segments).
   const labelOrder = [];
   const seen = new Set();
   periods.forEach((period) => {
@@ -30,7 +31,6 @@ const buildBucketTable = (data, bucketKey) => {
 
   if (labelOrder.length === 0) return null;
 
-  // Sort labels by most recent period's value (desc) for readability.
   const latestPeriod = periods[periods.length - 1];
   const latestMap = new Map(
     (data.by_period?.[latestPeriod]?.[bucketKey] || []).map((r) => [r.label, r.value])
@@ -56,61 +56,123 @@ const SegmentTable = ({ title, data, bucketKey }) => {
   };
 
   return (
-    <Paper withBorder p="md" radius="md">
-      <Title order={4} pb="sm">{title}</Title>
-      <Table highlightOnHover>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th style={{ width: '35%' }}>Segment</Table.Th>
+    <Card className="p-4">
+      <h4 className="text-base font-semibold mb-3">{title}</h4>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[35%]">Segment</TableHead>
             {periods.map((period) => (
-              <Table.Th key={period} style={{ textAlign: 'right' }}>{period}</Table.Th>
+              <TableHead key={period} className="text-right">{period}</TableHead>
             ))}
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {labelOrder.map((label) => (
-            <Table.Tr key={label}>
-              <Table.Td style={{ fontWeight: 500 }}>{label}</Table.Td>
+            <TableRow key={label}>
+              <TableCell className="font-medium">{label}</TableCell>
               {periods.map((period) => (
-                <Table.Td key={period} style={{ textAlign: 'right' }}>
+                <TableCell key={period} className="text-right tabular-nums">
                   {formatCurrency(valueFor(period, label))}
-                </Table.Td>
+                </TableCell>
               ))}
-            </Table.Tr>
+            </TableRow>
           ))}
-          <Table.Tr style={{ borderTop: '2px solid var(--mantine-color-gray-5)' }}>
-            <Table.Td style={{ fontWeight: 600 }}>Total Revenue</Table.Td>
+          <TableRow className="border-t-2 border-border">
+            <TableCell className="font-semibold">Total Revenue</TableCell>
             {periods.map((period) => (
-              <Table.Td key={period} style={{ textAlign: 'right', fontWeight: 600 }}>
+              <TableCell key={period} className="text-right tabular-nums font-semibold">
                 {formatCurrency(data.by_period?.[period]?.total)}
-              </Table.Td>
+              </TableCell>
             ))}
-          </Table.Tr>
-        </Table.Tbody>
+          </TableRow>
+        </TableBody>
       </Table>
-    </Paper>
+    </Card>
   );
 };
 
 const SegmentsSkeleton = () => (
-  <Stack gap="md" pt="md">
-    <Skeleton height={24} width={280} />
+  <div className="space-y-4 pt-4">
+    <Skeleton className="h-6 w-72" />
     {[0, 1, 2].map((i) => (
-      <Paper key={i} withBorder p="md" radius="md">
-        <Skeleton height={16} width={180} mb="sm" />
-        <Stack gap={8}>
-          {[0, 1, 2, 3].map((j) => <Skeleton key={j} height={14} />)}
-        </Stack>
-      </Paper>
+      <Card key={i} className="p-4">
+        <Skeleton className="h-4 w-48 mb-3" />
+        <div className="space-y-2">
+          {[0, 1, 2, 3].map((j) => (
+            <Skeleton key={j} className="h-3.5 w-full" />
+          ))}
+        </div>
+      </Card>
     ))}
-  </Stack>
+  </div>
 );
 
-const Segments = ({ data, loading }) => {
-  if (loading && !data?.by_period) return <SegmentsSkeleton />;
+const Segments = ({ dataByTicker, tickers = [], loading }) => {
+  // Pick the first loaded ticker that actually returned data; fall back to
+  // the first input ticker so the chip strip still renders something.
+  const validTickers = (tickers || []).filter((t) => t && t.trim() !== '');
+  const tickersWithData = validTickers.filter((t) => dataByTicker?.[t]?.by_period);
+
+  const [activeTicker, setActiveTicker] = useState(null);
+  const key = validTickers.join('|') + '::' + tickersWithData.join('|');
+  useEffect(() => {
+    if (tickersWithData.length > 0) {
+      setActiveTicker((cur) => (tickersWithData.includes(cur) ? cur : tickersWithData[0]));
+    } else {
+      setActiveTicker(null);
+    }
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading && (!dataByTicker || Object.keys(dataByTicker).length === 0)) {
+    return <SegmentsSkeleton />;
+  }
+
+  if (!dataByTicker || Object.keys(dataByTicker).length === 0) {
+    return <h4 className="text-base font-semibold pt-4">No segment data available. Please search first.</h4>;
+  }
+
+  const renderSwitcher = () => {
+    if (validTickers.length <= 1) return null;
+    return (
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-[11px] uppercase tracking-wider text-muted-foreground mr-1">Ticker</span>
+        {validTickers.map((t) => {
+          const hasData = !!dataByTicker?.[t]?.by_period;
+          const isActive = t === activeTicker;
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => hasData && setActiveTicker(t)}
+              disabled={!hasData}
+              className={cn(
+                'px-2.5 py-1 rounded text-xs font-semibold transition-colors',
+                isActive
+                  ? 'bg-accent text-accent-foreground'
+                  : hasData
+                    ? 'bg-card-hover/40 text-muted-foreground hover:bg-card-hover hover:text-foreground'
+                    : 'bg-card-hover/20 text-muted-foreground/40 cursor-not-allowed'
+              )}
+              title={hasData ? t : `${t} returned no segment data`}
+            >
+              {t}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const data = activeTicker ? dataByTicker[activeTicker] : null;
 
   if (!data || !data.by_period) {
-    return <Title order={4}>No segment data available. Please search first.</Title>;
+    return (
+      <div className="space-y-4 pt-4">
+        {renderSwitcher()}
+        <h4 className="text-base font-semibold">No segment data available for the selected ticker.</h4>
+      </div>
+    );
   }
 
   const tables = BUCKETS
@@ -119,24 +181,24 @@ const Segments = ({ data, loading }) => {
 
   if (tables.length === 0) {
     return (
-      <Stack gap="sm" pt="md">
-        <Title order={3}>Revenue Segments</Title>
-        <Text c="dimmed">
-          {data.ticker} did not report segmented revenue for the selected periods.
-        </Text>
-      </Stack>
+      <div className="space-y-3 pt-4">
+        {renderSwitcher()}
+        <h3 className="text-lg font-semibold">Revenue Segments</h3>
+        <p className="text-muted-foreground">
+          {data.ticker || activeTicker} did not report segmented revenue for the selected periods.
+        </p>
+      </div>
     );
   }
 
   return (
-    <Stack gap="md" pt="md">
-      <Title order={3}>
-        Revenue Segments — {data.ticker}
-      </Title>
-      {tables.map(({ key, title }) => (
-        <SegmentTable key={key} title={title} data={data} bucketKey={key} />
+    <div className="space-y-4 pt-4">
+      {renderSwitcher()}
+      <h3 className="text-lg font-semibold">Revenue Segments — {data.ticker || activeTicker}</h3>
+      {tables.map(({ key: k, title }) => (
+        <SegmentTable key={k} title={title} data={data} bucketKey={k} />
       ))}
-    </Stack>
+    </div>
   );
 };
 

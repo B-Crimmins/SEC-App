@@ -1,6 +1,14 @@
 import React from 'react';
 import Popover from './Popover';
 import s from './statements.module.css';
+import { useUnits } from '../../../Utilities/UnitsContext';
+import { formatCurrency } from '../../../Utilities/formatters';
+
+// Ratio keys whose value is a raw dollar amount (not a multiple or
+// percentage). These get reformatted on the frontend so they respect the
+// global Millions/Billions toggle from Preferences instead of using the
+// hardcoded "$X.XXM" string the backend produces.
+const DOLLAR_VALUE_RATIOS = new Set(['revenue', 'free_cash_flow']);
 
 // Ratios where a lower value is the "good" outcome (leverage, plant age, cost/burden
 // ratios). Color coding inverts for these: a negative YoY delta is green, positive red.
@@ -34,7 +42,7 @@ const RATIO_LABELS = {
   average_remaining_life_of_plant: 'Average Remaining Life of Plant',
   average_total_life_span_of_plant: 'Average Total Life Span of Plant',
   inventory_turnover: 'Inventory Turnover',
-  receivables_ratio: 'Receivables Ratio',
+  receivables_turnover: 'Receivables Turnover',
   operating_cash_flow_to_net_income: 'Operating Cash Flow / Net Income',
   capex_to_depreciation: 'CapEx / Depreciation',
   free_cash_flow: 'Free Cash Flow',
@@ -68,7 +76,7 @@ const SECTIONS = [
       ['average_age_of_plant', 'average_remaining_life_of_plant', 'average_total_life_span_of_plant'],
     ],
   },
-  { title: 'Operating Ratios', groups: [['inventory_turnover', 'receivables_ratio']] },
+  { title: 'Operating Ratios', groups: [['inventory_turnover', 'receivables_turnover']] },
   {
     title: 'Quality of Earnings Analysis',
     groups: [['operating_cash_flow_to_net_income', 'capex_to_depreciation', 'free_cash_flow']],
@@ -145,12 +153,13 @@ const TooltipCell = ({ formatted, tooltip, hideYoy, ratioKey, nullReason, rowLab
 const SkeletonRow = () => (
   <div style={{ display: 'flex', gap: 8 }}>
     {Array.from({ length: 4 }).map((_, i) => (
-      <div key={i} style={{ height: 12, flex: 1, background: 'var(--mantine-color-gray-2)', borderRadius: 4 }} />
+      <div key={i} style={{ height: 12, flex: 1, background: 'hsl(var(--muted))', borderRadius: 4 }} />
     ))}
   </div>
 );
 
 const FinancialComparisonTable = ({ data, selectedTickers, loading }) => {
+  const units = useUnits();
   if (loading && (!data || !data.calculated_ratios)) {
     return (
       <div className={s.stack} style={{ paddingTop: 16 }}>
@@ -203,16 +212,24 @@ const FinancialComparisonTable = ({ data, selectedTickers, loading }) => {
 
   const renderRatioRow = (ratioKey) => {
     const label = RATIO_LABELS[ratioKey] || firstRatios[ratioKey]?.label || ratioKey;
+    const isDollarValue = DOLLAR_VALUE_RATIOS.has(ratioKey);
     return (
       <tr key={ratioKey}>
         <td className={s.label}>{label}</td>
         {years.map((year) =>
           companies.map((company) => {
             const entry = getRatioEntry(company, year, ratioKey);
+            // Dollar-amount ratios are stored raw on the server; format
+            // them through the unit-aware helper so the table matches the
+            // M/B toggle from Preferences. Other ratios keep the backend's
+            // string (percentages, multiples, etc.).
+            const formatted = isDollarValue && typeof entry?.value === 'number'
+              ? formatCurrency(entry.value, units)
+              : (entry?.formatted || '');
             return (
               <td key={`${company.ticker}-${year}`} className={s.num}>
                 <TooltipCell
-                  formatted={entry?.formatted || ''}
+                  formatted={formatted}
                   tooltip={entry?.tooltip}
                   hideYoy={hideYoy}
                   ratioKey={ratioKey}

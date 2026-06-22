@@ -223,12 +223,12 @@ RATIO_SPECS: Dict[str, Dict[str, Any]] = {
         "components": ["cost_of_goods_sold", "inventory"],
         "fn": lambda v: _safe_div(abs(v.get("cost_of_goods_sold", 0) or 0), v.get("inventory", 0)),
     },
-    "receivables_ratio": {
-        "label": "Receivables Ratio",
-        "formula": "Accounts Receivable / Revenue",
-        "definition": "Share of revenue tied up in uncollected receivables.",
-        "components": ["accounts_receivable", "revenue"],
-        "fn": lambda v: _safe_div(v.get("accounts_receivable", 0), v.get("revenue", 0)),
+    "receivables_turnover": {
+        "label": "Receivables Turnover",
+        "formula": "Revenue / Accounts Receivable",
+        "definition": "How many times the AR balance turned over during the period — higher = faster collection.",
+        "components": ["revenue", "accounts_receivable"],
+        "fn": lambda v: _safe_div(v.get("revenue", 0), v.get("accounts_receivable", 0)),
     },
     "operating_cash_flow_to_net_income": {
         "label": "Operating Cash Flow / Net Income",

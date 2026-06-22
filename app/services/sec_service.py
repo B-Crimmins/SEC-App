@@ -709,10 +709,22 @@ class SECService:
                 statement_type, per_year, years
             )
 
+        # edgartools exposes `.tickers` as a list on the Company object;
+        # surface the first symbol so the frontend ticker switcher can
+        # display a real symbol instead of falling back to the CIK.
+        ticker_symbol = ""
+        try:
+            tickers_list = getattr(company, "tickers", None) or []
+            if tickers_list:
+                ticker_symbol = str(tickers_list[0])
+        except Exception:
+            pass
+
         return {
             "company": {
                 "name": getattr(company, "name", "") or "",
                 "cik": str(getattr(company, "cik", "") or cik),
+                "ticker": ticker_symbol,
             },
             "years": years,
             "statements": categorized,
