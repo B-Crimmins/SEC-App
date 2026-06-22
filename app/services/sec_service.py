@@ -84,6 +84,22 @@ _CONCEPT_PENALTIES = (
     ("ContinuingOperations", 2),
 )
 
+# Concepts whose unit is dollars-per-share, not raw dollars. The frontend
+# uses this to skip the M/B unit toggle and render with 2-decimal precision
+# (otherwise an EPS of $1.50 divided by 1e6 reads as "$0.0M" → user sees
+# zero). Substring match against the full us-gaap concept name.
+_PER_SHARE_MARKERS = (
+    "PerShare",
+    "PerCommonUnit",
+    "PerLimitedPartnershipUnit",
+)
+
+
+def _value_kind(concept_full: str) -> str:
+    if any(m in concept_full for m in _PER_SHARE_MARKERS):
+        return "per_share"
+    return "currency"
+
 
 def _concept_penalty(concept_full: str) -> int:
     score = 0
@@ -199,12 +215,15 @@ class SECService:
             if tickers:
                 ticker = tickers[0]
 
+        from services.sic_sectors import sector_from_sic
+        sic = str(getattr(company, "sic", "") or "")
         return {
             "cik": cik,
             "ticker": ticker or "",
             "company_name": getattr(company, "name", "") or "",
-            "sic": str(getattr(company, "sic", "") or ""),
+            "sic": sic,
             "industry": getattr(company, "industry", "") or "",
+            "sector": sector_from_sic(sic) or "",
         }
 
     # ------------------------------------------------------------------
@@ -262,12 +281,21 @@ class SECService:
             return self._find_quarterly_filing(filings, quarter_info)
 
         target_year = str(period).strip()
+        # Collect every year-match, then prefer the non-amendment. Amendments
+        # (10-K/A, 10-Q/A) often carry only the narrative section and leave
+        # the XBRL statements empty — picking them silently makes the entire
+        # period look unpopulated. Original filing first, /A only as fallback.
         try:
+            matches = []
             for filing in filings:
                 report_date = _date_str(getattr(filing, "report_date", ""))
                 filing_date = _date_str(getattr(filing, "filing_date", ""))
                 if target_year and (target_year in report_date or target_year in filing_date):
-                    return filing
+                    matches.append(filing)
+            if not matches:
+                return None
+            non_amend = [f for f in matches if not str(getattr(f, "form", "")).endswith("/A")]
+            return non_amend[0] if non_amend else matches[0]
         except Exception as exc:
             logger.warning("Error scanning filings: %s", exc)
         return None
@@ -732,6 +760,7 @@ class SECService:
         section_item_order: Dict[str, List[str]] = {}
         concept_to_section: Dict[str, str] = {}
         concept_label: Dict[str, str] = {}
+        concept_kind: Dict[str, str] = {}
 
         def _ensure_section(title: str) -> None:
             if title not in section_item_order:
@@ -776,6 +805,7 @@ class SECService:
                 concept_to_section[concept_clean] = section_title
                 section_item_order[section_title].append(concept_clean)
             concept_label[concept_clean] = label_str or concept_clean
+            concept_kind.setdefault(concept_clean, _value_kind(str(raw_concept)))
 
         # Collect values across all requested years.
         concept_values: Dict[str, Dict[str, float]] = {}
@@ -815,6 +845,7 @@ class SECService:
                             str(label).strip() if label is not None else concept_clean
                         )
 
+                concept_kind.setdefault(concept_clean, _value_kind(str(raw_concept)))
                 concept_values.setdefault(concept_clean, {})[year] = numeric_value
 
         result: Dict[str, List[Dict[str, Any]]] = {}
@@ -827,6 +858,7 @@ class SECService:
                 items.append({
                     "type": concept_label.get(concept_key, concept_key),
                     "gaap_name": concept_key,
+                    "value_kind": concept_kind.get(concept_key, "currency"),
                     "values": values,
                 })
             if items:

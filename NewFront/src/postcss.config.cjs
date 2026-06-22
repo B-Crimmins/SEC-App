@@ -1,5 +1,9 @@
 module.exports = {
   plugins: {
+    // Tailwind v4 plugin — runs alongside Mantine's preset. We deliberately
+    // import only `tailwindcss/theme` + `tailwindcss/utilities` (no preflight)
+    // from src/shadcn.css so Tailwind doesn't reset Mantine pages.
+    '@tailwindcss/postcss': {},
     'postcss-preset-mantine': {},
     'postcss-simple-vars': {
       variables: {

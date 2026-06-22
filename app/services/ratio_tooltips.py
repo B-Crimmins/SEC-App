@@ -429,7 +429,22 @@ def identify_primary_driver(
     if not contributions:
         return None
 
-    primary = max(contributions, key=lambda c: abs(c["contribution"] or 0))
+    # Pick the component whose single-component swap moves the ratio in the
+    # SAME direction as the actual change. A counter-direction component
+    # (e.g. current assets growing on a ratio that fell) isn't the driver —
+    # it's a partial offset. Falling back to the largest |contribution| only
+    # when every component moved against the net delta (rare; usually a
+    # rounding-tier change).
+    aligned: List[Dict[str, Any]] = []
+    if total_delta != 0:
+        sign = 1.0 if total_delta > 0 else -1.0
+        aligned = [
+            c for c in contributions
+            if (c.get("contribution") or 0.0) * sign > 0
+        ]
+
+    pool = aligned if aligned else contributions
+    primary = max(pool, key=lambda c: abs(c["contribution"] or 0))
     return {
         "prev_ratio": prev_ratio,
         "curr_ratio": curr_ratio,

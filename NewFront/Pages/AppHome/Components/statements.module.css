@@ -63,9 +63,23 @@
 :global([data-mantine-color-scheme="dark"]) .table td { border-bottom-color: var(--mantine-color-dark-5); }
 :global([data-mantine-color-scheme="dark"]) .table tbody tr:hover { background: var(--mantine-color-dark-6); }
 
-.num { text-align: right; font-variant-numeric: tabular-nums; }
-.numHead { text-align: right; }
+/* `.table th` sets text-align: left at (0,1,1), so a bare `.numHead` (0,1,0)
+   gets out-specced and the year headers silently render left-aligned while
+   the body cells are right-aligned — that's the column-misalignment bug.
+   Compound `.table th.numHead` matches the parent rule's specificity and
+   lets text-align: right win. Same fix for `.num` on the off chance someone
+   later adds a text-align to `.table td`. */
+.num,
+.table td.num { text-align: right; font-variant-numeric: tabular-nums; padding-right: 14px; }
+.numHead,
+.table th.numHead { text-align: right; font-variant-numeric: tabular-nums; padding-right: 14px; }
 .label { font-weight: 500; }
+
+/* table-layout: fixed lets <colgroup> widths win, so period columns are the
+   same width regardless of how long the line-item labels are. */
+.tableFixed { table-layout: fixed; }
+.colNum { width: 140px; }
+@media (max-width: 760px) { .colNum { width: 110px; } }
 
 /* Section header row — collapses per-category sub-tables into a single table */
 .sectionRow td {

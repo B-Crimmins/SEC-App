@@ -82,8 +82,24 @@ const SECTIONS = [
   },
 ];
 
-const TooltipCell = ({ formatted, tooltip, hideYoy, ratioKey }) => {
+const TooltipCell = ({ formatted, tooltip, hideYoy, ratioKey, nullReason, rowLabel }) => {
   if (!formatted) return '';
+  // Structural N/A: the backend couldn't compute the ratio for a known
+  // filer-schema reason (e.g. airlines don't report SG&A). Render "N/A"
+  // with the explanation in a popover so the user understands why.
+  if (nullReason) {
+    const naContent = (
+      <div className={s.stackSm}>
+        <div className={s.popTitle}>{rowLabel || 'Not applicable'}</div>
+        <div>{nullReason}</div>
+      </div>
+    );
+    return (
+      <Popover content={naContent}>
+        <span className={s.popDim} style={{ fontStyle: 'italic' }}>N/A</span>
+      </Popover>
+    );
+  }
   if (!tooltip) return formatted;
 
   const { label, formula, definition, components, yoy } = tooltip;
@@ -200,6 +216,8 @@ const FinancialComparisonTable = ({ data, selectedTickers, loading }) => {
                   tooltip={entry?.tooltip}
                   hideYoy={hideYoy}
                   ratioKey={ratioKey}
+                  nullReason={entry?.null_reason}
+                  rowLabel={label}
                 />
               </td>
             );

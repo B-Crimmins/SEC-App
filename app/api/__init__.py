@@ -4,6 +4,7 @@ from .financials import router as financials_router
 from .analysis import router as analysis_router
 from .subscriptions import router as subscriptions_router
 from .export import router as export_router
+from .feedback import router as feedback_router
 
 __all__ = [
     "auth_router",
@@ -12,4 +13,5 @@ __all__ = [
     "analysis_router",
     "subscriptions_router",
     "export_router",
+    "feedback_router",
 ]

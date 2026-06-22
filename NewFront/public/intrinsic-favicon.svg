@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <style>circle, rect { fill: #fff } @media (prefers-color-scheme: light) { circle, rect { fill: #000 } }</style>
+  <circle cx="82.00" cy="50.00" r="0.30"/>
+  <circle cx="81.51" cy="55.56" r="0.77"/>
+  <circle cx="80.07" cy="60.94" r="1.22"/>
+  <circle cx="77.71" cy="66.00" r="1.65"/>
+  <circle cx="74.51" cy="70.57" r="2.04"/>
+  <circle cx="70.57" cy="74.51" r="2.37"/>
+  <circle cx="66.00" cy="77.71" r="2.64"/>
+  <circle cx="60.94" cy="80.07" r="2.84"/>
+  <circle cx="55.56" cy="81.51" r="2.96"/>
+  <circle cx="50.00" cy="82.00" r="3.00"/>
+  <circle cx="44.44" cy="81.51" r="2.96"/>
+  <circle cx="39.06" cy="80.07" r="2.84"/>
+  <circle cx="34.00" cy="77.71" r="2.64"/>
+  <circle cx="29.43" cy="74.51" r="2.37"/>
+  <circle cx="25.49" cy="70.57" r="2.04"/>
+  <circle cx="22.29" cy="66.00" r="1.65"/>
+  <circle cx="19.93" cy="60.94" r="1.22"/>
+  <circle cx="18.49" cy="55.56" r="0.77"/>
+  <circle cx="18.00" cy="50.00" r="0.30"/>
+  <circle cx="18.49" cy="44.44" r="0.77"/>
+  <circle cx="19.93" cy="39.06" r="1.22"/>
+  <circle cx="22.29" cy="34.00" r="1.65"/>
+  <circle cx="25.49" cy="29.43" r="2.04"/>
+  <circle cx="29.43" cy="25.49" r="2.37"/>
+  <circle cx="34.00" cy="22.29" r="2.64"/>
+  <circle cx="39.06" cy="19.93" r="2.84"/>
+  <circle cx="44.44" cy="18.49" r="2.96"/>
+  <circle cx="50.00" cy="18.00" r="3.00"/>
+  <circle cx="55.56" cy="18.49" r="2.96"/>
+  <circle cx="60.94" cy="19.93" r="2.84"/>
+  <circle cx="66.00" cy="22.29" r="2.64"/>
+  <circle cx="70.57" cy="25.49" r="2.37"/>
+  <circle cx="74.51" cy="29.43" r="2.04"/>
+  <circle cx="77.71" cy="34.00" r="1.65"/>
+  <circle cx="80.07" cy="39.06" r="1.22"/>
+  <circle cx="81.51" cy="44.44" r="0.77"/>
+  <rect x="46" y="30" width="8" height="40" rx="0.5"/>
+</svg>

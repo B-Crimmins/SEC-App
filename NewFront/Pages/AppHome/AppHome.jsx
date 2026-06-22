@@ -3,7 +3,7 @@ import axios from "axios";
 import globalConfig from '../../global/globalConfig.json'
 import { useState } from "react";
 import { filterUsGaap, organizeItemsBySections, TableDiff, usdFormatter } from "../../Helpers/TableHelpers";
-import { IconBrightnessDown, IconChevronLeft, IconChevronRight, IconLogout, IconMoon, IconSearch, IconSettings, IconX } from "@tabler/icons-react";
+import { IconAdjustmentsHorizontal, IconBrightnessDown, IconChartBar, IconChevronLeft, IconChevronRight, IconLogout, IconMessage, IconMoon, IconScale, IconSearch, IconX } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import FinancialComparisonTable from "./Components/RatioAnalysis";
 import FinancialStatementViewer from "./Components/NewTrendTable";
@@ -11,6 +11,10 @@ import DCFAnalysis from "./Components/DCFAnalysis";
 import Segments from "./Components/Segments";
 import CommonSize from "./Components/CommonSize";
 import KPIStrip from "./Components/KPIStrip";
+import FeedbackModal from "./Components/FeedbackModal";
+import ScorecardPortal from "./Components/ScorecardPortal";
+import BenchmarkPortal from "./Components/BenchmarkPortal";
+import { Logo } from "../../src/components/Logo";
 import { UnitsContext } from "../../Utilities/UnitsContext";
 import { UNIT_OPTIONS } from "../../Utilities/formatters";
 
@@ -67,9 +71,12 @@ const AppHome = () => {
     const [segmentsData, setSegmentsData] = useState(null);
     const [commonSizeData, setCommonSizeData] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [units, setUnits] = useState('auto');
+    const [units, setUnits] = useState('M');
     const [prefsOpen, setPrefsOpen] = useState(false);
+    const [feedbackOpen, setFeedbackOpen] = useState(false);
     const [railCollapsed, setRailCollapsed] = useState(false);
+    const [scorecardOpen, setScorecardOpen] = useState(false);
+    const [benchmarkOpen, setBenchmarkOpen] = useState(false);
     const STATEMENT_TABS = ['Balance Sheet', 'Income Statement', 'Cash Flow Statement'];
 
     const { colorScheme, setColorScheme, clearColorScheme } = useMantineColorScheme();
@@ -111,11 +118,17 @@ const AppHome = () => {
 
         setPrefsOpen(false);
         setLoading(true);
-        const calls = [getRatioAnalysis()];
-        if (activeTab === 'Segments') calls.push(getSegments());
-        else if (activeTab === 'Common Size') calls.push(getCommonSize());
-        else if (STATEMENT_TABS.includes(activeTab)) calls.push(getSimpleTicker());
-        // Ratio Analysis is already served by the primary call.
+        // Fan out to every tab's fetcher in parallel so a single search
+        // populates the whole dashboard — Balance Sheet / Income / Cash
+        // Flow (getSimpleTicker), Ratio Analysis, Segments, and Common
+        // Size are all warm by the time the user switches tabs. DCF
+        // self-fetches off ticker/reportType/period via its own effect.
+        const calls = [
+            getRatioAnalysis(),
+            getSimpleTicker(),
+            getSegments(),
+            getCommonSize(),
+        ];
 
         Promise.allSettled(calls).finally(() => setLoading(false));
     }
@@ -492,20 +505,33 @@ const AppHome = () => {
                             </Tooltip>
                             <UnstyledButton onClick={() => navigate('/')} aria-label="Intrinsiq home">
                                 <Group gap="xs" align="center">
-                                    <IconSearch size={28} stroke={2.2} />
-                                    <Title>
+                                    <Logo size={32} />
+                                    <Title
+                                        style={{ fontFamily: "'Outfit', system-ui, sans-serif", fontWeight: 700, letterSpacing: '-0.01em' }}
+                                    >
                                         Intrinsiq
                                     </Title>
                                 </Group>
                             </UnstyledButton>
                         </Group>
-                        <Tooltip label="Logout">
-                            <Button variant="default">
-                                <IconLogout
-                                    onClick={handleLogout}
-                                />
-                            </Button>
-                        </Tooltip>
+                        <Group gap="xs">
+                            <Tooltip label="Send feedback">
+                                <Button
+                                    variant="default"
+                                    onClick={() => setFeedbackOpen(true)}
+                                    aria-label="Send feedback"
+                                >
+                                    <IconMessage size={18} />
+                                </Button>
+                            </Tooltip>
+                            <Tooltip label="Logout">
+                                <Button variant="default">
+                                    <IconLogout
+                                        onClick={handleLogout}
+                                    />
+                                </Button>
+                            </Tooltip>
+                        </Group>
                     </Group>
                 </Box>
             </AppShell.Header>
@@ -513,14 +539,34 @@ const AppHome = () => {
             <AppShell.Navbar p={6}>
                 <Stack justify="space-between" style={{ height: '100%' }} align="center">
                     <Stack gap="xs" align="center">
-                        <Tooltip label="Preferences" position="right" withArrow>
+                        <Tooltip label="Search setup" position="right" withArrow>
                             <ActionIcon
                                 size="xl"
                                 variant={prefsOpen ? 'filled' : 'subtle'}
                                 onClick={() => setPrefsOpen((o) => !o)}
-                                aria-label="Preferences"
+                                aria-label="Search setup"
                             >
-                                <IconSettings size={22} />
+                                <IconAdjustmentsHorizontal size={22} />
+                            </ActionIcon>
+                        </Tooltip>
+                        <Tooltip label="Relative Valuation" position="right" withArrow>
+                            <ActionIcon
+                                size="xl"
+                                variant={scorecardOpen ? 'filled' : 'subtle'}
+                                onClick={() => { setScorecardOpen((o) => !o); setBenchmarkOpen(false); }}
+                                aria-label="Relative Valuation"
+                            >
+                                <IconScale size={22} />
+                            </ActionIcon>
+                        </Tooltip>
+                        <Tooltip label="Benchmark" position="right" withArrow>
+                            <ActionIcon
+                                size="xl"
+                                variant={benchmarkOpen ? 'filled' : 'subtle'}
+                                onClick={() => { setBenchmarkOpen((o) => !o); setScorecardOpen(false); }}
+                                aria-label="Benchmark"
+                            >
+                                <IconChartBar size={22} />
                             </ActionIcon>
                         </Tooltip>
                     </Stack>
@@ -636,7 +682,18 @@ const AppHome = () => {
                 </Stack>
             </Drawer>
 
+            <FeedbackModal
+                opened={feedbackOpen}
+                onClose={() => setFeedbackOpen(false)}
+            />
+
             <AppShell.Main>
+                {benchmarkOpen ? (
+                    <BenchmarkPortal />
+                ) : scorecardOpen ? (
+                    <ScorecardPortal />
+                ) : (
+                <>
                 <KPIStrip
                     data={ratioTable}
                     loading={loading}
@@ -683,6 +740,8 @@ const AppHome = () => {
                         />
                     </Tabs.Panel>
                 </Tabs>
+                </>
+                )}
             </AppShell.Main>
         </AppShell>
     </UnitsContext.Provider>)

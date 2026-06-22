@@ -63,12 +63,19 @@ class FinancialRatioCalculator:
             income_statement = financial_data.get('income_statement', {})
             balance_sheet = financial_data.get('balance_sheet', {})
             cash_flow = financial_data.get('cash_flow', {})
-            
+
             # Extract key values
             extracted_values = self._extract_key_values(income_statement, balance_sheet, cash_flow)
-            
+
+            # Detect the filer's income-statement schema so ratios that come
+            # up blank for structural reasons (airlines/banks/REITs/insurers)
+            # can carry a tooltip-friendly explanation instead of just being
+            # dropped silently.
+            from services.filer_schema import detect_filer_schema
+            schema = detect_filer_schema(income_statement.keys(), balance_sheet.keys())
+
             # Calculate ratios
-            calculated_ratios = self._calculate_ratios(extracted_values)
+            calculated_ratios = self._calculate_ratios(extracted_values, schema=schema)
             
             return {
                 'ratios': calculated_ratios,
@@ -167,12 +174,37 @@ class FinancialRatioCalculator:
         values['operating_income'] = self._find_value_by_keywords(income_statement, [
             'OperatingIncomeLoss'
         ])
+        # Many filers (e.g. Alcoa) don't tag `OperatingIncomeLoss` directly
+        # — they roll operating + non-operating into a custom entity-extension
+        # like `aa_CostsAndOperatingExpensesAndNonoperatingIncomeExpenses` and
+        # only break out pretax income. Derive op-income as `PretaxIncome +
+        # InterestExpense` when the standard tag is absent. This is a
+        # conservative reconstruction (ignores small non-operating items)
+        # but it beats reporting margin as blank when the data is right there.
+        if not values['operating_income']:
+            pretax = self._find_value_by_keywords(income_statement, ['PretaxIncomeLoss'])
+            int_exp = self._find_value_by_keywords(income_statement, ['InterestExpense'])
+            if pretax and int_exp:
+                values['operating_income'] = pretax + abs(int_exp)
         values['net_income'] = self._find_value_by_keywords(income_statement, [
-            'NetIncome'
+            'NetIncome',
+            # us-gaap actually exposes this as NetIncomeLoss (covers both
+            # positive and negative results). When edgartools doesn't
+            # normalize the standard_concept to "NetIncome", we still need
+            # to pick this row up.
+            'NetIncomeLoss',
         ])
         values['cost_of_goods_sold'] = self._find_value_by_keywords(income_statement, [
-            'CostOfGoodsAndServicesSold'
+            'CostOfGoodsAndServicesSold',
+            'CostOfRevenue',
+            'CostOfGoodsSold',
         ])
+        # Manufacturers like Alcoa frequently don't tag `us-gaap:GrossProfit`
+        # directly — they only tag Revenues and CostOfGoodsAndServicesSold.
+        # Back into gross_profit when the direct lookup misses, otherwise
+        # gross_profit_margin renders empty even though both inputs exist.
+        if not values['gross_profit'] and values['revenue'] and values['cost_of_goods_sold']:
+            values['gross_profit'] = values['revenue'] - values['cost_of_goods_sold']
         values['research_and_developement'] = self._find_value_by_keywords(income_statement, [
             'ResearchAndDevelopmentExpenses'
         ])    
@@ -185,14 +217,40 @@ class FinancialRatioCalculator:
         values['interest_income'] = self._find_value_by_keywords(income_statement, [
             'InterestIncome', 'NetInterestIncome'
         ])
-        values['shares_outstanding'] = self._find_value_by_keywords(balance_sheet, [
-            'SharesYearEnd', 'SharesIssued',
-            'CommonStockSharesOutstanding', 'CommonStockSharesIssued',
-        ]) or self._find_value_by_keywords(income_statement, [
-            'SharesFullyDilutedAverage', 'SharesAverage',
-        ])
+        # Shares outstanding lives in several places depending on the filer
+        # and the form. Try balance-sheet outstanding/issued first, then the
+        # income statement's weighted-average rows, then the DEI cover-page
+        # entity-level fact (sometimes only that one is tagged).
+        values['shares_outstanding'] = (
+            self._find_value_by_keywords(balance_sheet, [
+                'SharesYearEnd', 'SharesIssued',
+                'CommonStockSharesOutstanding', 'CommonStockSharesIssued',
+                'EntityCommonStockSharesOutstanding',
+            ])
+            or self._find_value_by_keywords(income_statement, [
+                'SharesFullyDilutedAverage', 'SharesAverage',
+                'WeightedAverageNumberOfSharesOutstandingBasic',
+                'WeightedAverageNumberOfDilutedSharesOutstanding',
+            ])
+            or self._find_value_by_keywords(cash_flow, [
+                'EntityCommonStockSharesOutstanding',
+            ])
+        )
         values['income_taxes'] = self._find_value_by_keywords(income_statement, [
-            'IncomeTaxes'
+            'IncomeTaxes',
+            # us-gaap canonical name. The shorter "IncomeTaxes" only matches
+            # when edgartools normalizes — otherwise we miss tax expense
+            # entirely, which kills the effective_tax_rate ratio.
+            'IncomeTaxExpenseBenefit',
+            'IncomeTaxesPaidNet',
+        ])
+        # Prefer the filer-reported EPS directly when present — it's already
+        # rounded to the filer's stated precision and avoids back-calculating
+        # net_income / shares_outstanding (which fails whenever either input
+        # is missing).
+        values['eps_basic'] = self._find_value_by_keywords(income_statement, [
+            'EarningsPerShareBasic',
+            'EarningsPerShareBasicAndDiluted',
         ])
         values['sg&a'] = self._find_value_by_keywords(income_statement, [
             'SellingGeneralAndAdminExpenses'
@@ -245,7 +303,12 @@ class FinancialRatioCalculator:
             'LongTermDebt', 'LongTermDebtNoncurrent'
         ])
         values['total_equity'] = self._find_value_by_keywords(balance_sheet, [
-            'AllEquityBalance', 'StockholdersEquity'
+            'AllEquityBalance',
+            'StockholdersEquity',
+            # AA-style filings tag total equity (parent + NCI) with this longer
+            # us-gaap concept; without it the ratio lookup returns 0 even when
+            # the underlying value is present.
+            'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest',
         ])
         values['cash'] = self._find_value_by_keywords(balance_sheet, [
             'CashAndCashEquivalents', 'CashAndMarketableSecurities',
@@ -264,13 +327,19 @@ class FinancialRatioCalculator:
             'PrepaidExpensesAndOtherCurrentAssets'
         ])
         values['accumulated_depreciation'] = self._find_value_by_keywords(balance_sheet, [
-            'AccumulatedDepreciation'
+            'AccumulatedDepreciation',
+            # us-gaap canonical name (it's a mouthful). Without this alias,
+            # Average Age of Plant goes empty for filers whose
+            # standard_concept didn't get shortened.
+            'AccumulatedDepreciationDepletionAndAmortizationPropertyPlantAndEquipment',
         ])
         values['PP&E_net'] = self._find_value_by_keywords(balance_sheet, [
-            'PlantPropertyEquipmentNet'
+            'PlantPropertyEquipmentNet',
+            'PropertyPlantAndEquipmentNet',
         ])
         values['pp&e_gross'] = self._find_value_by_keywords(balance_sheet, [
-            'GrossPropertyPlantEquipment'
+            'GrossPropertyPlantEquipment',
+            'PropertyPlantAndEquipmentGross',
         ])
         # Cash Flow Values
         values['operating_cash_flow'] = self._find_value_by_keywords(cash_flow, [
@@ -292,7 +361,9 @@ class FinancialRatioCalculator:
             'ShortTermInvestments'
         ])
         values['shareholder_equity'] = self._find_value_by_keywords(balance_sheet, [
-            'AllEquityBalance', 'StockholdersEquity'
+            'AllEquityBalance',
+            'StockholdersEquity',
+            'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest',
         ])
         values['goodwill'] = self._find_value_by_keywords(balance_sheet, [
             'Goodwill'
@@ -347,13 +418,58 @@ class FinancialRatioCalculator:
                     value = entry.get('value')
                     if value is not None:
                         return float(value)
+
+        # Tertiary: CamelCase-prefix fallback. Filers occasionally tag a
+        # concept with a longer suffix variant (e.g.
+        # `StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest`
+        # in place of `StockholdersEquity`). Match only when the next
+        # character is uppercase so `Revenue` doesn't false-positive against
+        # `RevenueAndExpenseSomething` while still catching
+        # `RevenueFromContractWithCustomer*`. We require an uppercase
+        # boundary to avoid matching unrelated families like
+        # `EquityMethodInvestments` when asked for `StockholdersEquity`.
+        for keyword in keywords:
+            for entry in statement_data.values():
+                if not isinstance(entry, dict):
+                    continue
+                for field in ('standard_concept', 'concept'):
+                    name = entry.get(field) or ''
+                    if (
+                        name.startswith(keyword)
+                        and len(name) > len(keyword)
+                        and name[len(keyword)].isupper()
+                    ):
+                        value = entry.get('value')
+                        if value is not None:
+                            return float(value)
         return 0.0
     
 # ------------------------------------------------------------
 
-    def _calculate_ratios(self, values: Dict[str, float]) -> Dict[str, Dict[str, Any]]:
-        """Calculate financial ratios from extracted values"""
+    def _calculate_ratios(self, values: Dict[str, float], schema: str = "unknown") -> Dict[str, Dict[str, Any]]:
+        """Calculate financial ratios from extracted values.
+
+        `schema` is one of services.filer_schema.SCHEMA_*. When a ratio is
+        blank because the filer's schema doesn't include the input line
+        (e.g. airline has no SG&A), the resulting ratio dict carries a
+        `null_reason` so the UI can render N/A with an explanatory tooltip
+        instead of a silent blank.
+        """
+        from services.filer_schema import null_reason_for
         ratios = {}
+
+        def _try_emit_null(ratio_key: str, label: str) -> None:
+            """If the schema gives a structural reason this ratio is blank,
+            emit a null result with the reason. Otherwise leave the key
+            absent (preserves prior behavior for unexplained blanks)."""
+            reason = null_reason_for(ratio_key, schema)
+            if reason:
+                ratios[ratio_key] = {
+                    'value': None,
+                    'label': label,
+                    'formatted': 'N/A',
+                    'null_reason': reason,
+                }
         
         # Cost of Equity
         if values['nominal_risk_free_rate'] is not None and values['company_beta'] is not None and values['expected_S&P500_return'] is not None:
@@ -406,11 +522,14 @@ class FinancialRatioCalculator:
             ratios['gross_profit_margin'] = self._create_ratio_result(gross_margin, 'Gross Profit Margin')
         else:
             print(f"⚠️ Cannot calculate Gross Profit Margin: revenue={values['revenue']:,.0f}, gross_profit={values['gross_profit']:,.0f}")
-        
+            _try_emit_null('gross_profit_margin', 'Gross Profit Margin')
+
         # Operating Margin = (Operating Income / Revenue) * 100
         if values['revenue'] > 0 and values['operating_income'] != 0:
             operating_margin = (values['operating_income'] / values['revenue']) * 100
             ratios['operating_margin'] = self._create_ratio_result(operating_margin, 'Operating Margin')
+        else:
+            _try_emit_null('operating_margin', 'Operating Margin')
         
         # Net Margin = (Net Income / Revenue) * 100
         if values['revenue'] > 0 and values['net_income'] != 0:
@@ -424,16 +543,20 @@ class FinancialRatioCalculator:
             ebitda_margin = (ebitda / values['revenue']) * 100
             ratios['ebitda_margin'] = self._create_ratio_result(ebitda_margin, 'EBITDA Margin')
         
-
-        # Current Ratio = Current Assets / Current Liabilities
+        # Current Ratio = Current Assets / Cur
+        # rent Liabilities
         if values['current_liabilities'] > 0:
             current_ratio = values['current_assets'] / values['current_liabilities']
             ratios['current_ratio'] = self._create_ratio_result(current_ratio, 'Current Ratio')
-        
+        else:
+            _try_emit_null('current_ratio', 'Current Ratio')
+
         # Quick Ratio = (Current Assets - Inventory) / Current Liabilities
         if values['current_liabilities'] > 0:
             quick_ratio = (values['current_assets'] - values['inventory'] - values['deffered_tax_assets'] - values['PrepaidExpensesAndOtherCurrentAssets']) / values['current_liabilities']
             ratios['quick_ratio'] = self._create_ratio_result(quick_ratio, 'Quick Ratio')
+        else:
+            _try_emit_null('quick_ratio', 'Quick Ratio')
         
         # Cash Ratio = Cash / Current Liabilities
         if values['current_liabilities'] > 0:
@@ -508,6 +631,8 @@ class FinancialRatioCalculator:
         if values['inventory'] > 0 and values['cost_of_goods_sold'] != 0:
             inventory_turnover = abs(values['cost_of_goods_sold']) / values['inventory']
             ratios['inventory_turnover'] = self._create_ratio_result(inventory_turnover, 'Inventory Turnover')
+        else:
+            _try_emit_null('inventory_turnover', 'Inventory Turnover')
         
         # Receivables Ratio = Accounts Receivable / Revenue
         if values['revenue'] > 0:
@@ -533,6 +658,8 @@ class FinancialRatioCalculator:
         if values['revenue'] > 0 and values['sg&a'] != 0:
             sga_percent = (values['sg&a'] / values['revenue']) * 100
             ratios['sga_percent_of_revenue'] = self._create_ratio_result(sga_percent, 'SG&A as % of Revenue')
+        else:
+            _try_emit_null('sga_percent_of_revenue', 'SG&A as % of Revenue')
         
         # Effective tax rate = income taxes / pretax income (stored as percent)
         pretax_income = values['operating_income']+values['interest_expense']+values['interest_income']+values['non_operating_income']
@@ -551,8 +678,12 @@ class FinancialRatioCalculator:
             roic = (values['net_income'] / invested_capital) * 100
             ratios['return_on_invested_capital'] = self._create_ratio_result(roic, 'Return on Invested Capital (ROIC)')
 
-        # Earnings Per Share = Net Income / Shares Outstanding
-        if values['shares_outstanding'] > 0 and values['net_income'] != 0:
+        # Earnings Per Share — prefer the filer-tagged value; fall back to
+        # NetIncome / SharesOutstanding so EPS still shows when EPS isn't
+        # tagged but its inputs are.
+        if values.get('eps_basic'):
+            ratios['earnings_per_share'] = self._create_ratio_result(values['eps_basic'], 'Earnings Per Share')
+        elif values['shares_outstanding'] > 0 and values['net_income'] != 0:
             eps = values['net_income'] / values['shares_outstanding']
             print(f"🧮 EPS calculation: {values['net_income']:,.0f} / {values['shares_outstanding']:,.0f} = {eps:.2f}")
             ratios['earnings_per_share'] = self._create_ratio_result(eps, 'Earnings Per Share')

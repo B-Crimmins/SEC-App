@@ -361,18 +361,39 @@ def calculate_common_size(values: Dict[str, float]) -> Dict[str, Dict[str, Any]]
     operating_income = values.get("operating_income")
     depreciation = values.get("depreciation_amortization") or 0
 
-    ebit = operating_income if operating_income is not None else None
+    # Filers like Alcoa don't tag us-gaap:OperatingIncomeLoss, so the lookup
+    # returns 0. Fall back to EBIT = Net Income + Income Taxes + Interest
+    # Expense, which is derivable from concepts those filers do tag.
+    if not operating_income and values.get("net_income") and values.get("income_taxes"):
+        ebit = (
+            values["net_income"]
+            + values["income_taxes"]
+            + (values.get("interest_expense") or 0)
+        )
+    else:
+        ebit = operating_income if operating_income else None
     ratios["ebit"] = _result(ebit, "EBIT ($)")
     ratios["ebit_margin"] = _result(_pct(ebit, revenue), "EBIT Margin")
 
-    ebitda = (operating_income + depreciation) if operating_income is not None else None
+    ebitda = (ebit + depreciation) if ebit is not None else None
+
     ratios["ebitda"] = _result(ebitda, "EBITDA ($)")
     ratios["ebitda_margin"] = _result(_pct(ebitda, revenue), "EBITDA Margin")
 
     # NOPAT — EBIT × (1 − effective tax rate). Original file called this
-    # "Adjusted EBIT"; keeping the label for UI familiarity.
-    if ebit is not None and etr_decimal is not None:
-        adjusted_ebit = ebit * (1 - etr_decimal)
+    # "Adjusted EBIT"; keeping the label for UI familiarity. When EBIT came
+    # from the NI+Tax+InterestExpense fallback, derive ETR from those same
+    # filer-tagged inputs (Tax / (NI + Tax)) instead of the operating-income-
+    # based pretax — otherwise the broken pretax leaks into NOPAT.
+    if not operating_income and values.get("net_income") and values.get("income_taxes"):
+        pretax_for_etr = values["net_income"] + values["income_taxes"]
+        etr_for_nopat = (
+            values["income_taxes"] / pretax_for_etr if pretax_for_etr else None
+        )
+    else:
+        etr_for_nopat = etr_decimal
+    if ebit is not None and etr_for_nopat is not None:
+        adjusted_ebit = ebit * (1 - etr_for_nopat)
     else:
         adjusted_ebit = None
     ratios["adjusted_ebit"] = _result(adjusted_ebit, "Adjusted EBIT ($)")

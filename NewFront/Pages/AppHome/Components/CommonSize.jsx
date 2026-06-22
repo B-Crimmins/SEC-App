@@ -1,6 +1,8 @@
 import React from 'react';
 import Popover from './Popover';
 import s from './statements.module.css';
+import { useUnits } from '../../../Utilities/UnitsContext';
+import { formatCurrency as sharedFormatCurrency } from '../../../Utilities/formatters';
 
 // Ordered so rows read top-to-bottom like an income statement.
 const ROW_ORDER = [
@@ -39,15 +41,6 @@ const yoyClass = (rowKey, delta) => {
   const inverted = YOY_INVERTED.has(rowKey);
   const isGood = inverted ? delta < 0 : delta > 0;
   return isGood ? s.deltaUp : s.deltaDown;
-};
-
-const formatCurrency = (value) => {
-  if (value === null || value === undefined || Number.isNaN(value)) return '—';
-  const abs = Math.abs(value);
-  if (abs >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
-  if (abs >= 1e3) return `$${(value / 1e3).toFixed(2)}K`;
-  return `$${value.toFixed(0)}`;
 };
 
 const formatPercent = (value) => {
@@ -115,7 +108,10 @@ const SkeletonRow = () => (
   </div>
 );
 
-const cellFor = (company, year, rowKey) => {
+// formatCurrency lives inside the component (so it can read the Units
+// context), so anything outside the component that needs dollar formatting
+// has to take it as a parameter instead of grabbing it from outer scope.
+const cellFor = (company, year, rowKey, formatCurrency) => {
   const row = company?.periods?.[year]?.ratios?.[rowKey];
   if (!row) return { formatted: '—', tooltip: null };
   const formatted =
@@ -128,6 +124,9 @@ const cellFor = (company, year, rowKey) => {
 };
 
 const CommonSize = ({ data, loading }) => {
+  const units = useUnits();
+  const formatCurrency = (value) => sharedFormatCurrency(value, units);
+
   if (loading && (!data || !data.companies || data.companies.length === 0)) {
     return (
       <div className={s.stack} style={{ paddingTop: 16 }}>
@@ -211,7 +210,7 @@ const CommonSize = ({ data, loading }) => {
                   <td className={s.label}>{label}</td>
                   {years.map((year) =>
                     companies.map((company) => {
-                      const { formatted, tooltip } = cellFor(company, year, rowKey);
+                      const { formatted, tooltip } = cellFor(company, year, rowKey, formatCurrency);
                       return (
                         <td key={`${company.ticker}-${year}`} className={s.num}>
                           <TooltipCell

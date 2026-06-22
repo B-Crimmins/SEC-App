@@ -1,15 +1,7 @@
 import React from 'react';
 import s from './statements.module.css';
-
-const formatCurrency = (value) => {
-  if (value === null || value === undefined) return '-';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-};
+import { useUnits } from '../../../Utilities/UnitsContext';
+import { formatCurrency, formatPerShare } from '../../../Utilities/formatters';
 
 const STATEMENT_TITLES = {
   balance_sheet: 'Balance Sheet',
@@ -21,6 +13,7 @@ const STATEMENT_TITLES = {
 // flat table per company. Per-category sub-headers are collapsed into section
 // rows so the table reads top-to-bottom without separate Paper cards.
 const FinancialStatementViewer = ({ data, statementType }) => {
+  const unit = useUnits();
   if (!data?.companies || data.companies.length === 0) {
     return <div className={s.dim}>No data available</div>;
   }
@@ -58,7 +51,11 @@ const FinancialStatementViewer = ({ data, statementType }) => {
           <tr key={`row-${key}-${category}-${idx}`}>
             <td className={s.label}>{item.type}</td>
             {years.map((year) => (
-              <td key={year} className={s.num}>{formatCurrency(item.values[year])}</td>
+              <td key={year} className={s.num}>
+                {item.value_kind === 'per_share'
+                  ? formatPerShare(item.values[year])
+                  : formatCurrency(item.values[year], unit)}
+              </td>
             ))}
           </tr>
         );
@@ -81,7 +78,16 @@ const FinancialStatementViewer = ({ data, statementType }) => {
               <div className={s.sectionSub}>CIK: {company.company.cik}</div>
             </div>
             <div className={s.card} style={{ padding: 0, overflowX: 'auto' }}>
-              <table className={s.table}>
+              <table className={`${s.table} ${s.tableFixed}`}>
+                <colgroup>
+                  {/* First column flexes for line-item labels; period columns
+                      are pinned to a fixed width so headers and numeric body
+                      cells share the exact same right edge. */}
+                  <col />
+                  {years.map((year) => (
+                    <col key={year} className={s.colNum} />
+                  ))}
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Line Item</th>

@@ -8,6 +8,7 @@ import {
   Title,
   UnstyledButton,
 } from '@mantine/core';
+import { Logo } from '../../src/components/Logo';
 import { useDisclosure } from '@mantine/hooks';
 import classes from './navigation.module.css';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -31,9 +32,16 @@ const NavigationBar = () => {
       <header className={classes.header}>
         <Group justify="space-between" h="100%">
           <UnstyledButton onClick={goHome} aria-label="Intrinsiq home">
-            <Title order={3} c="var(--mantine-color-intrinsiq-4)" style={{ letterSpacing: '0.0em' }}>
-              Intrinsiq
-            </Title>
+            <Group gap={8} align="center" wrap="nowrap">
+              <Logo size={28} color="var(--mantine-color-intrinsiq-4)" />
+              <Title
+                order={3}
+                c="var(--mantine-color-intrinsiq-4)"
+                style={{ fontFamily: "'Outfit', system-ui, sans-serif", fontWeight: 700, letterSpacing: '-0.01em' }}
+              >
+                Intrinsiq
+              </Title>
+            </Group>
           </UnstyledButton>
 
           <Group visibleFrom="sm">
