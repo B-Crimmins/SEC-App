@@ -1,0 +1,137 @@
+{
+  "generated_at": "2026-05-18T00:00:00+00:00",
+  "source": "bundled-sample (derived from mock_totalview_reports.json)",
+  "record_count": 10,
+  "records": [
+    {
+      "county_fips": "04013",
+      "county_name": "Maricopa",
+      "state": "AZ",
+      "year": 2012,
+      "metrics": {
+        "property_count": 1,
+        "avg_sale_price": 1133000.0,
+        "avg_estimated_value": 1420858.5,
+        "involuntary_lien_count": 0,
+        "hoa_lien_count": 0
+      }
+    },
+    {
+      "county_fips": "08031",
+      "county_name": "Denver",
+      "state": "CO",
+      "year": 2014,
+      "metrics": {
+        "property_count": 1,
+        "avg_sale_price": 536000.0,
+        "avg_estimated_value": 756982.5,
+        "involuntary_lien_count": 0,
+        "hoa_lien_count": 0
+      }
+    },
+    {
+      "county_fips": "12086",
+      "county_name": "Miami-Dade",
+      "state": "FL",
+      "year": 2011,
+      "metrics": {
+        "property_count": 1,
+        "avg_sale_price": 1199000.0,
+        "avg_estimated_value": 1638032.5,
+        "involuntary_lien_count": 1,
+        "hoa_lien_count": 0
+      }
+    },
+    {
+      "county_fips": "13121",
+      "county_name": "Fulton",
+      "state": "GA",
+      "year": 2014,
+      "metrics": {
+        "property_count": 1,
+        "avg_sale_price": 1019000.0,
+        "avg_estimated_value": 1261313.0,
+        "involuntary_lien_count": 1,
+        "hoa_lien_count": 0
+      }
+    },
+    {
+      "county_fips": "17031",
+      "county_name": "Cook",
+      "state": "IL",
+      "year": 2016,
+      "metrics": {
+        "property_count": 1,
+        "avg_sale_price": 864000.0,
+        "avg_estimated_value": 1224273.0,
+        "involuntary_lien_count": 1,
+        "hoa_lien_count": 0
+      }
+    },
+    {
+      "county_fips": "25025",
+      "county_name": "Suffolk",
+      "state": "MA",
+      "year": 2015,
+      "metrics": {
+        "property_count": 1,
+        "avg_sale_price": 388000.0,
+        "avg_estimated_value": 724752.0,
+        "involuntary_lien_count": 0,
+        "hoa_lien_count": 0
+      }
+    },
+    {
+      "county_fips": "37119",
+      "county_name": "Mecklenburg",
+      "state": "NC",
+      "year": 2017,
+      "metrics": {
+        "property_count": 1,
+        "avg_sale_price": 1457000.0,
+        "avg_estimated_value": 1611883.5,
+        "involuntary_lien_count": 1,
+        "hoa_lien_count": 0
+      }
+    },
+    {
+      "county_fips": "36047",
+      "county_name": "Kings",
+      "state": "NY",
+      "year": 2009,
+      "metrics": {
+        "property_count": 1,
+        "avg_sale_price": 736000.0,
+        "avg_estimated_value": 945523.0,
+        "involuntary_lien_count": 1,
+        "hoa_lien_count": 0
+      }
+    },
+    {
+      "county_fips": "48201",
+      "county_name": "Harris",
+      "state": "TX",
+      "year": 2016,
+      "metrics": {
+        "property_count": 1,
+        "avg_sale_price": 1322000.0,
+        "avg_estimated_value": 1597544.0,
+        "involuntary_lien_count": 0,
+        "hoa_lien_count": 0
+      }
+    },
+    {
+      "county_fips": "53033",
+      "county_name": "King",
+      "state": "WA",
+      "year": 2019,
+      "metrics": {
+        "property_count": 1,
+        "avg_sale_price": 1431000.0,
+        "avg_estimated_value": 1608238.5,
+        "involuntary_lien_count": 0,
+        "hoa_lien_count": 0
+      }
+    }
+  ]
+}

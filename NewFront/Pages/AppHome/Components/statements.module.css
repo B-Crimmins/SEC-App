@@ -1,0 +1,175 @@
+/* Shared styles for statement/ratio/DCF tables. Uses the ShadCN design
+   tokens defined in src/index.css so dark/light toggle works via the
+   `.dark` class on the root. */
+
+.card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 16px;
+  color: hsl(var(--card-foreground));
+}
+
+.cardTitle {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sectionLabel {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.sectionSub {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.stackSm { display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.rowEnd { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ---------- tables ---------- */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-weight: 600;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  border-bottom: 1px solid hsl(var(--border));
+  white-space: nowrap;
+}
+.table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid hsl(var(--border));
+  font-variant-numeric: tabular-nums;
+}
+.table tbody tr:hover { background: hsl(var(--card-hover)); }
+
+.num,
+.table td.num { text-align: right; font-variant-numeric: tabular-nums; padding-right: 14px; }
+.numHead,
+.table th.numHead { text-align: right; font-variant-numeric: tabular-nums; padding-right: 14px; }
+.label { font-weight: 500; }
+
+.tableFixed { table-layout: fixed; }
+.colNum { width: 140px; }
+@media (max-width: 760px) { .colNum { width: 110px; } }
+
+.sectionRow td {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 10px 10px 8px;
+  border-top: 1px solid hsl(var(--border));
+  border-bottom: 1px solid hsl(var(--border));
+}
+.sectionRow:hover td { background: hsl(var(--muted)); }
+
+.subSectionRow td {
+  font-weight: 600;
+  padding: 8px 10px 4px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  border-top: 1px solid hsl(var(--border));
+  text-decoration: underline;
+}
+.subSectionRow:hover td { background: transparent; }
+
+.spacerRow td { padding: 4px 0; border: none; background: transparent; }
+.spacerRow:hover td { background: transparent; }
+
+/* ---------- buttons / inputs ---------- */
+.btn {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn:hover { background: hsl(var(--primary) / 0.9); }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.inputRoot { display: flex; flex-direction: column; gap: 4px; }
+.inputLabel { font-size: 13px; font-weight: 500; }
+.inputDesc { font-size: 11px; color: hsl(var(--muted-foreground)); }
+.input {
+  background: hsl(var(--input));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: hsl(var(--foreground));
+  outline: none;
+  font-variant-numeric: tabular-nums;
+}
+.input:focus {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+}
+
+/* ---------- grid layouts ---------- */
+.grid2  { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.grid4  { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+@media (max-width: 960px) { .grid4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } .grid4 { grid-template-columns: 1fr; } }
+.fullSpan { grid-column: 1 / -1; }
+
+/* ---------- alerts ---------- */
+.alertError {
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid hsl(var(--loss) / 0.5);
+  background: hsl(var(--loss) / 0.1);
+  color: hsl(var(--loss));
+  font-size: 13px;
+}
+
+.dim { color: hsl(var(--muted-foreground)); font-size: 13px; }
+.mono { font-variant-numeric: tabular-nums; }
+
+.valuePositive { color: hsl(var(--gain)); font-weight: 600; }
+
+/* ---------- popover ---------- */
+.popTarget {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1.2;
+  transition: background-color 120ms ease;
+}
+.popTarget:hover, .popOpen { background-color: hsl(var(--card-hover)); }
+
+.popPanel {
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.popTitle { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.popDim { color: hsl(var(--muted-foreground)); }
+.popDivider { height: 1px; background: hsl(var(--border)); margin: 6px 0; }
+
+.deltaUp   { color: hsl(var(--gain)); font-weight: 600; }
+.deltaDown { color: hsl(var(--loss)); font-weight: 600; }

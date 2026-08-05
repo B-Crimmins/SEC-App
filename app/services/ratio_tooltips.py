@@ -223,12 +223,12 @@ RATIO_SPECS: Dict[str, Dict[str, Any]] = {
         "components": ["cost_of_goods_sold", "inventory"],
         "fn": lambda v: _safe_div(abs(v.get("cost_of_goods_sold", 0) or 0), v.get("inventory", 0)),
     },
-    "receivables_ratio": {
-        "label": "Receivables Ratio",
-        "formula": "Accounts Receivable / Revenue",
-        "definition": "Share of revenue tied up in uncollected receivables.",
-        "components": ["accounts_receivable", "revenue"],
-        "fn": lambda v: _safe_div(v.get("accounts_receivable", 0), v.get("revenue", 0)),
+    "receivables_turnover": {
+        "label": "Receivables Turnover",
+        "formula": "Revenue / Accounts Receivable",
+        "definition": "How many times the AR balance turned over during the period — higher = faster collection.",
+        "components": ["revenue", "accounts_receivable"],
+        "fn": lambda v: _safe_div(v.get("revenue", 0), v.get("accounts_receivable", 0)),
     },
     "operating_cash_flow_to_net_income": {
         "label": "Operating Cash Flow / Net Income",
@@ -429,7 +429,22 @@ def identify_primary_driver(
     if not contributions:
         return None
 
-    primary = max(contributions, key=lambda c: abs(c["contribution"] or 0))
+    # Pick the component whose single-component swap moves the ratio in the
+    # SAME direction as the actual change. A counter-direction component
+    # (e.g. current assets growing on a ratio that fell) isn't the driver —
+    # it's a partial offset. Falling back to the largest |contribution| only
+    # when every component moved against the net delta (rare; usually a
+    # rounding-tier change).
+    aligned: List[Dict[str, Any]] = []
+    if total_delta != 0:
+        sign = 1.0 if total_delta > 0 else -1.0
+        aligned = [
+            c for c in contributions
+            if (c.get("contribution") or 0.0) * sign > 0
+        ]
+
+    pool = aligned if aligned else contributions
+    primary = max(pool, key=lambda c: abs(c["contribution"] or 0))
     return {
         "prev_ratio": prev_ratio,
         "curr_ratio": curr_ratio,

@@ -1,7 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime
-from models.user import UserTier
 
 
 class UserBase(BaseModel):
@@ -26,9 +25,9 @@ class UserLogin(BaseModel):
 
 class UserResponse(UserBase):
     id: int
-    tier: UserTier
     is_active: bool
     is_verified: bool
+    card_last4: Optional[str] = None
     created_at: datetime
     
     class Config:
@@ -41,4 +40,4 @@ class Token(BaseModel):
 
 
 class TokenData(BaseModel):
-    email: Optional[str] = None 
+    email: Optional[str] = None

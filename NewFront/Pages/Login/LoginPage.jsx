@@ -1,146 +1,164 @@
-import { useState } from 'react'
-import {
-  Anchor,
-  Button,
-  Checkbox,
-  Container,
-  Divider,
-  Group,
-  Paper,
-  PasswordInput,
-  Stack,
-  Text,
-  TextInput,
-} from '@mantine/core';
-import axios from 'axios'
+import { useState } from 'react';
+import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import globalConfig from '../../global/globalConfig.json'
-import { useForm } from '@mantine/form';
-import { upperFirst, useToggle } from '@mantine/hooks';
 import { IconSearch } from '@tabler/icons-react';
+import globalConfig from '../../global/globalConfig.json';
+import { Button } from '../../src/components/ui/button';
+import { Card, CardContent, CardHeader } from '../../src/components/ui/card';
+import { Input } from '../../src/components/ui/input';
+import { Label } from '../../src/components/ui/label';
+import { Checkbox } from '../../src/components/ui/checkbox';
+import { Separator } from '../../src/components/ui/separator';
 
 function LoginPage() {
-  const [count, setCount] = useState(0)
   const [isRegister, setIsRegister] = useState(false);
+  const [accepted, setAccepted] = useState(false);
   const [loginForm, setLoginForm] = useState({
     username: '',
     password: '',
-    confirmPassword: ''
-  })
+    confirmPassword: '',
+  });
   const navigate = useNavigate();
 
-  
+  const storeSession = (data) => {
+    sessionStorage.setItem('token', data.access_token);
+    sessionStorage.setItem('user', JSON.stringify(data.user));
+    navigate('/AppHome');
+  };
 
   const handleLogin = () => {
-    //Do some ajax stuff here
-    console.log("click");
-    axios.post(globalConfig.appUrl + '/auth/login', loginForm, {
-      headers:{
-        'Content-Type': 'multipart/form-data'
-      }
-    }).then((x) => {
-      console.log(x.data);
-      sessionStorage.setItem('token', x.data.access_token);
-      sessionStorage.setItem('user', JSON.stringify(x.data.user))
-      navigate('/AppHome')
-    })    
-  }
+    const formData = new URLSearchParams();
+    formData.append('username', loginForm.username);
+    formData.append('password', loginForm.password);
+
+    axios
+      .post(globalConfig.appUrl + '/auth/login', formData, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      })
+      .then((x) => storeSession(x.data));
+  };
+
+  const handleRegister = () => {
+    if (loginForm.password !== loginForm.confirmPassword) {
+      return;
+    }
+
+    axios
+      .post(
+        globalConfig.appUrl + '/auth/register',
+        {
+          email: loginForm.username,
+          username: loginForm.username,
+          password: loginForm.password,
+        },
+        { headers: { 'Content-Type': 'application/json' } }
+      )
+      .then(() => handleLogin());
+  };
+
+  const handleSubmit = () => {
+    if (isRegister) {
+      handleRegister();
+    } else {
+      handleLogin();
+    }
+  };
 
   const handleChange = (e) => {
-    setLoginForm(prevData => {
-      return { ...prevData, [e.target.name]: e.target.value}
-    })
-  }
-
-  const handleRegisterClick = () => {
-    setIsRegister(!isRegister);
-  }
+    setLoginForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
 
   return (
-    <>
-      <Container size={500} my={100}>
-        <Paper radius="md" p="lg" withBorder>
-          <Group gap="xs" align="center">
-            <IconSearch size={22} stroke={2.2} />
-            <Text size="lg" fw={500}>
-              Login to Intrinsiq
-            </Text>
-          </Group>
-          <Divider label="Please login or register below" labelPosition="center" my="lg" />
-          <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
-          <Stack>
-            {/* <TextInput
-              label="Name"
-              placeholder="Your name"
-              //value={form.values.name}
-              //onChange={(event) => form.setFieldValue('name', event.currentTarget.value)}
-              radius="md"
-            /> */}
-            <TextInput
-              required
-              label="Email"
-              placeholder="hello@mantine.dev"
-              onChange={handleChange}
-              name='username'
-              //value={form.values.email}
-              //onChange={(event) => form.setFieldValue('email', event.currentTarget.value)}
-              //error={form.errors.email && 'Invalid email'}
-              radius="md"
-            />
-            <PasswordInput
-              required
-              label="Password"
-              placeholder="Your password"
-              onChange={handleChange}
-              name='password'
-              //value={form.values.password}
-              //onChange={(event) => form.setFieldValue('password', event.currentTarget.value)}
-              //error={form.errors.password && 'Password should include at least 6 characters'}
-              radius="md"
-            />
-            {isRegister &&
-              <PasswordInput
+    <div className="mx-auto max-w-md px-4 py-24">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <IconSearch size={22} strokeWidth={2.2} className="text-accent" />
+            <h2 className="text-lg font-semibold">Login to Intrinsiq</h2>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Separator className="flex-1" />
+            <span className="text-xs text-muted-foreground">Please login or register below</span>
+            <Separator className="flex-1" />
+          </div>
+
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSubmit();
+            }}
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="username">Email</Label>
+              <Input
+                id="username"
+                name="username"
+                type="email"
                 required
-                label="Confirm Password"
-                placeholder="Confirm password"
+                placeholder="you@example.com"
                 onChange={handleChange}
-                name='confirmPassword'
-                //value={form.values.password}
-                //onChange={(event) => form.setFieldValue('password', event.currentTarget.value)}
-                //error={form.errors.password && 'Password should include at least 6 characters'}
-                radius="md"
               />
-            }
+            </div>
 
-            {isRegister &&
-              <Checkbox
-                label="I accept terms and conditions"
-              //checked={form.values.terms}
-              //onChange={(event) => form.setFieldValue('terms', event.currentTarget.checked)}
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                required
+                placeholder="Your password"
+                onChange={handleChange}
               />
-            }
+            </div>
 
-          </Stack>
-          <Group justify="space-between" mt="xl">
-            <Anchor
-              component="button"
-              type="button"
-              c="dimmed"
-              onClick={handleRegisterClick} size="xs">
-              {isRegister ? "I have an account" : "Register"}
-            </Anchor>
-            <Button
-              type="submit"
-              radius="xl"
+            {isRegister && (
+              <div className="space-y-1.5">
+                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <Input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  required
+                  placeholder="Confirm password"
+                  onChange={handleChange}
+                />
+              </div>
+            )}
+
+            {isRegister && (
+              <div className="flex items-center gap-2">
+                <Checkbox checked={accepted} onCheckedChange={setAccepted} id="terms" />
+                <Label htmlFor="terms" className="cursor-pointer" onClick={() => setAccepted(!accepted)}>
+                  I accept terms and conditions
+                </Label>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2">
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+                onClick={() => setIsRegister(!isRegister)}
               >
-              {isRegister ? "Register" : "Login"}
-            </Button>
-          </Group>
+                {isRegister ? 'I have an account' : 'Register'}
+              </button>
+              <Button
+                type="submit"
+                className="rounded-full px-6"
+                disabled={isRegister && !accepted}
+              >
+                {isRegister ? 'Register' : 'Login'}
+              </Button>
+            </div>
           </form>
-        </Paper>
-      </Container>
-    </>
-  )
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
-export default LoginPage
+export default LoginPage;

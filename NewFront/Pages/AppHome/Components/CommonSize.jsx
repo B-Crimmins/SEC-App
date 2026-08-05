@@ -1,15 +1,8 @@
-import React, { useState } from 'react';
-import {
-  Divider,
-  Group,
-  Paper,
-  Popover,
-  Stack,
-  Table,
-  Text,
-  Title,
-  UnstyledButton,
-} from '@mantine/core';
+import React from 'react';
+import Popover from './Popover';
+import s from './statements.module.css';
+import { useUnits } from '../../../Utilities/UnitsContext';
+import { formatCurrency as sharedFormatCurrency } from '../../../Utilities/formatters';
 
 // Ordered so rows read top-to-bottom like an income statement.
 const ROW_ORDER = [
@@ -30,16 +23,24 @@ const ROW_ORDER = [
   'adjusted_ebit',
 ];
 
-// Rows whose value is already a percentage vs. rows that are dollar figures.
 const DOLLAR_KEYS = new Set(['ebit', 'ebitda', 'adjusted_ebit']);
 
-const formatCurrency = (value) => {
-  if (value === null || value === undefined || Number.isNaN(value)) return '—';
-  const abs = Math.abs(value);
-  if (abs >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
-  if (abs >= 1e3) return `$${(value / 1e3).toFixed(2)}K`;
-  return `$${value.toFixed(0)}`;
+// Cost / burden line items: a negative YoY delta is "good" (costs dropping),
+// so we color it green. Everything else uses the default rule (up = green).
+const YOY_INVERTED = new Set([
+  'cost_of_goods_sold',
+  'sga',
+  'research_and_development',
+  'depreciation_amortization',
+  'operating_expenses',
+  'effective_tax_rate',
+]);
+
+const yoyClass = (rowKey, delta) => {
+  if (typeof delta !== 'number' || delta === 0) return '';
+  const inverted = YOY_INVERTED.has(rowKey);
+  const isGood = inverted ? delta < 0 : delta > 0;
+  return isGood ? s.deltaUp : s.deltaDown;
 };
 
 const formatPercent = (value) => {
@@ -47,13 +48,7 @@ const formatPercent = (value) => {
   return `${value.toFixed(2)}%`;
 };
 
-// Mirrors the RatioTooltipCell used on the Ratio Analysis tab: popover with
-// formula, definition, components, and (single-ticker only) YoY delta +
-// primary driver.
-const CommonSizeTooltipCell = ({ formatted, tooltip, hideYoy }) => {
-  const [opened, setOpened] = useState(false);
-  const [hovered, setHovered] = useState(false);
-
+const TooltipCell = ({ formatted, tooltip, hideYoy, rowKey }) => {
   if (!formatted) return '';
   if (!tooltip) return formatted;
 
@@ -61,72 +56,62 @@ const CommonSizeTooltipCell = ({ formatted, tooltip, hideYoy }) => {
   const driver = yoy?.primary_driver;
   const showYoy = !hideYoy && yoy && typeof yoy.delta === 'number';
 
-  return (
-    <Popover
-      opened={opened}
-      onChange={setOpened}
-      width={340}
-      position="top"
-      withArrow
-      shadow="md"
-      closeOnClickOutside
-    >
-      <Popover.Target>
-        <UnstyledButton
-          onClick={() => setOpened((o) => !o)}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-          style={{
-            padding: '2px 6px',
-            borderRadius: 4,
-            backgroundColor: hovered || opened ? 'var(--mantine-color-gray-2)' : 'transparent',
-            transition: 'background-color 120ms ease',
-            cursor: 'pointer',
-            display: 'inline-block',
-            lineHeight: 1.2,
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {formatted}
-        </UnstyledButton>
-      </Popover.Target>
-      <Popover.Dropdown>
-        <Stack gap={6}>
-          <Text fw={600} size="sm">{label}</Text>
-          {formula && <Text size="xs" c="dimmed"><b>Formula:</b> {formula}</Text>}
-          {definition && <Text size="xs">{definition}</Text>}
-          {Array.isArray(components) && components.length > 0 && (
-            <Text size="xs" c="dimmed"><b>Components:</b> {components.join(', ')}</Text>
+  const content = (
+    <div className={s.stackSm}>
+      <div className={s.popTitle}>{label}</div>
+      {formula && <div className={s.popDim}><b>Formula:</b> {formula}</div>}
+      {definition && <div>{definition}</div>}
+      {Array.isArray(components) && components.length > 0 && (
+        <div className={s.popDim}><b>Components:</b> {components.join(', ')}</div>
+      )}
+      {showYoy && (
+        <>
+          <div className={s.popDivider} />
+          <div>
+            <span style={{ fontWeight: 500 }}>YoY change: </span>
+            <span className={yoyClass(rowKey, yoy.delta)}>
+              {yoy.delta >= 0 ? '+' : ''}{yoy.delta.toFixed(2)}
+              {typeof yoy.delta_pct === 'number'
+                ? ` (${yoy.delta_pct >= 0 ? '+' : ''}${yoy.delta_pct.toFixed(1)}%)`
+                : ''}
+            </span>
+          </div>
+          {driver && (
+            <div>
+              <b>Primary driver:</b> {driver.component_label}
+              {typeof driver.component_pct_change === 'number'
+                ? ` (${driver.component_pct_change >= 0 ? '+' : ''}${driver.component_pct_change.toFixed(1)}%)`
+                : ''}
+            </div>
           )}
-          {showYoy && (
-            <>
-              <Divider my={4} />
-              <Group gap="xs" wrap="nowrap">
-                <Text size="xs" fw={500}>YoY change:</Text>
-                <Text size="xs">
-                  {yoy.delta >= 0 ? '+' : ''}{yoy.delta.toFixed(2)}
-                  {typeof yoy.delta_pct === 'number'
-                    ? ` (${yoy.delta_pct >= 0 ? '+' : ''}${yoy.delta_pct.toFixed(1)}%)`
-                    : ''}
-                </Text>
-              </Group>
-              {driver && (
-                <Text size="xs">
-                  <b>Primary driver:</b> {driver.component_label}
-                  {typeof driver.component_pct_change === 'number'
-                    ? ` (${driver.component_pct_change >= 0 ? '+' : ''}${driver.component_pct_change.toFixed(1)}%)`
-                    : ''}
-                </Text>
-              )}
-            </>
-          )}
-        </Stack>
-      </Popover.Dropdown>
-    </Popover>
+        </>
+      )}
+    </div>
   );
+
+  return <Popover content={content}>{formatted}</Popover>;
 };
 
-const cellFor = (company, year, rowKey) => {
+const SkeletonRow = () => (
+  <div style={{ display: 'flex', gap: 8 }}>
+    {Array.from({ length: 5 }).map((_, i) => (
+      <div
+        key={i}
+        style={{
+          height: 12,
+          flex: 1,
+          background: 'hsl(var(--muted))',
+          borderRadius: 4,
+        }}
+      />
+    ))}
+  </div>
+);
+
+// formatCurrency lives inside the component (so it can read the Units
+// context), so anything outside the component that needs dollar formatting
+// has to take it as a parameter instead of grabbing it from outer scope.
+const cellFor = (company, year, rowKey, formatCurrency) => {
   const row = company?.periods?.[year]?.ratios?.[rowKey];
   if (!row) return { formatted: '—', tooltip: null };
   const formatted =
@@ -138,12 +123,28 @@ const cellFor = (company, year, rowKey) => {
   return { formatted, tooltip: row.tooltip || null };
 };
 
-const CommonSize = ({ data }) => {
-  if (!data || !data.companies || data.companies.length === 0) {
+const CommonSize = ({ data, loading }) => {
+  const units = useUnits();
+  const formatCurrency = (value) => sharedFormatCurrency(value, units);
+
+  if (loading && (!data || !data.companies || data.companies.length === 0)) {
     return (
-      <Stack pt="md">
-        <Title order={4}>No common-size data available. Please search first.</Title>
-      </Stack>
+      <div className={s.stack} style={{ paddingTop: 16 }}>
+        <h3 className={s.sectionLabel}>Common Size Analysis</h3>
+        <div className={s.card}>
+          <div className={s.stack}>
+            {Array.from({ length: 12 }, (_, i) => <SkeletonRow key={i} />)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data?.companies || data.companies.length === 0) {
+    return (
+      <div className={s.stack} style={{ paddingTop: 16 }}>
+        <h4 className={s.cardTitle}>No common-size data available. Please search first.</h4>
+      </div>
     );
   }
 
@@ -154,14 +155,13 @@ const CommonSize = ({ data }) => {
 
   if (years.length === 0) {
     return (
-      <Stack gap="sm" pt="md">
-        <Title order={3}>Common Size</Title>
-        <Title order={5} c="dimmed">No periods with extractable data.</Title>
-      </Stack>
+      <div className={s.stack} style={{ paddingTop: 16 }}>
+        <h3 className={s.sectionLabel}>Common Size</h3>
+        <div className={s.dim}>No periods with extractable data.</div>
+      </div>
     );
   }
 
-  // Derive row labels from whichever company/year has data first.
   const labelLookup = {};
   for (const company of companies) {
     for (const year of years) {
@@ -176,67 +176,60 @@ const CommonSize = ({ data }) => {
   }
 
   const visibleRows = ROW_ORDER.filter((key) => labelLookup[key] !== undefined);
-
-  // YoY attribution only makes sense for a single-ticker view. Comparing two
-  // or more tickers suppresses YoY and shows formula/definition only.
+  // YoY attribution only makes sense for a single-ticker view.
   const hideYoy = companies.length > 1;
-
   const numDataCols = years.length * companies.length;
   const colWidth = numDataCols > 0 ? `${70 / numDataCols}%` : 'auto';
 
-  const headerCells = [
-    <Table.Th key="metric" style={{ width: '30%' }}>Metric</Table.Th>,
-  ];
-  years.forEach((year) => {
-    companies.forEach((company) => {
-      headerCells.push(
-        <Table.Th
-          key={`${company.ticker}-${year}`}
-          style={{ textAlign: 'right', width: colWidth }}
-        >
-          {company.ticker} {year}
-        </Table.Th>
-      );
-    });
-  });
-
-  const rows = visibleRows.map((rowKey) => {
-    const label = labelLookup[rowKey] || rowKey;
-    const cells = [
-      <Table.Td key="label" style={{ fontWeight: 500 }}>{label}</Table.Td>,
-    ];
-    years.forEach((year) => {
-      companies.forEach((company) => {
-        const { formatted, tooltip } = cellFor(company, year, rowKey);
-        cells.push(
-          <Table.Td
-            key={`${company.ticker}-${year}`}
-            style={{ textAlign: 'right' }}
-          >
-            <CommonSizeTooltipCell
-              formatted={formatted}
-              tooltip={tooltip}
-              hideYoy={hideYoy}
-            />
-          </Table.Td>
-        );
-      });
-    });
-    return <Table.Tr key={rowKey}>{cells}</Table.Tr>;
-  });
-
   return (
-    <Stack gap="md" pt="md">
-      <Title order={3}>Common Size Analysis</Title>
-      <Paper withBorder p="md" radius="md">
-        <Table highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>{headerCells}</Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>{rows}</Table.Tbody>
-        </Table>
-      </Paper>
-    </Stack>
+    <div className={s.stack} style={{ paddingTop: 16 }}>
+      <h3 className={s.sectionLabel}>Common Size Analysis</h3>
+      <div className={s.card} style={{ padding: 0, overflowX: 'auto' }}>
+        <table className={s.table}>
+          <thead>
+            <tr>
+              <th style={{ width: '30%' }}>Metric</th>
+              {years.map((year) =>
+                companies.map((company) => (
+                  <th
+                    key={`${company.ticker}-${year}`}
+                    className={s.numHead}
+                    style={{ width: colWidth }}
+                  >
+                    {company.ticker} {year}
+                  </th>
+                ))
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((rowKey) => {
+              const label = labelLookup[rowKey] || rowKey;
+              return (
+                <tr key={rowKey}>
+                  <td className={s.label}>{label}</td>
+                  {years.map((year) =>
+                    companies.map((company) => {
+                      const { formatted, tooltip } = cellFor(company, year, rowKey, formatCurrency);
+                      return (
+                        <td key={`${company.ticker}-${year}`} className={s.num}>
+                          <TooltipCell
+                            formatted={formatted}
+                            tooltip={tooltip}
+                            hideYoy={hideYoy}
+                            rowKey={rowKey}
+                          />
+                        </td>
+                      );
+                    })
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 };
 

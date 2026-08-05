@@ -70,19 +70,37 @@ class StripeService:
             raise
     
     def cancel_subscription(self, subscription_id: str) -> Dict[str, Any]:
-        """Cancel a subscription"""
+        """Schedule cancellation at the end of the current billing period."""
         try:
             subscription = stripe.Subscription.modify(
                 subscription_id,
                 cancel_at_period_end=True
             )
+            try:
+                item = subscription['items']['data'][0]
+                period_start = item.get('current_period_start')
+                period_end = item.get('current_period_end')
+            except (KeyError, IndexError, TypeError):
+                period_start = None
+                period_end = None
+
             return {
                 'subscription_id': subscription.id,
                 'status': subscription.status,
-                'cancel_at_period_end': subscription.cancel_at_period_end
+                'cancel_at_period_end': subscription.cancel_at_period_end,
+                'current_period_start': period_start,
+                'current_period_end': period_end,
             }
         except Exception as e:
             print(f"Error canceling subscription: {e}")
+            raise
+
+    def cancel_subscription_immediately(self, subscription_id: str) -> None:
+        """Cancel a subscription immediately (e.g. abandoned incomplete checkout)."""
+        try:
+            stripe.Subscription.cancel(subscription_id)
+        except Exception as e:
+            print(f"Error immediately canceling subscription: {e}")
             raise
     
     def get_subscription(self, subscription_id: str) -> Dict[str, Any]:
@@ -138,4 +156,61 @@ class StripeService:
             }
         except Exception as e:
             print(f"Error getting customer: {e}")
-            raise 
+            raise
+
+    @staticmethod
+    def _last4_from_payment_method(payment_method: Any) -> Optional[str]:
+        if payment_method is None:
+            return None
+        if isinstance(payment_method, str):
+            payment_method = stripe.PaymentMethod.retrieve(payment_method)
+        card = payment_method.get('card') if isinstance(payment_method, dict) else getattr(payment_method, 'card', None)
+        if card is None:
+            return None
+        return card.get('last4') if isinstance(card, dict) else getattr(card, 'last4', None)
+
+    def get_card_last4_from_payment_intent(self, payment_intent_id: str) -> Optional[str]:
+        """Get card last4 from a succeeded payment intent."""
+        try:
+            payment_intent = stripe.PaymentIntent.retrieve(
+                payment_intent_id,
+                expand=['payment_method'],
+            )
+            return self._last4_from_payment_method(payment_intent.payment_method)
+        except Exception as e:
+            print(f"Error getting card last4 from payment intent: {e}")
+            return None
+
+    def get_card_last4_from_invoice(self, invoice_id: str) -> Optional[str]:
+        """Get card last4 from a paid invoice."""
+        try:
+            invoice = stripe.Invoice.retrieve(
+                invoice_id,
+                expand=['payment_intent.payment_method'],
+            )
+            payment_intent = invoice.get('payment_intent') if isinstance(invoice, dict) else invoice.payment_intent
+            if payment_intent is None:
+                return None
+            if isinstance(payment_intent, str):
+                return self.get_card_last4_from_payment_intent(payment_intent)
+            return self._last4_from_payment_method(
+                payment_intent.get('payment_method')
+                if isinstance(payment_intent, dict)
+                else getattr(payment_intent, 'payment_method', None)
+            )
+        except Exception as e:
+            print(f"Error getting card last4 from invoice: {e}")
+            return None
+
+    def get_card_last4_from_customer(self, customer_id: str) -> Optional[str]:
+        """Get card last4 from a customer's default payment method."""
+        try:
+            customer = stripe.Customer.retrieve(
+                customer_id,
+                expand=['invoice_settings.default_payment_method'],
+            )
+            default_pm = customer.invoice_settings.default_payment_method
+            return self._last4_from_payment_method(default_pm)
+        except Exception as e:
+            print(f"Error getting card last4 from customer: {e}")
+            return None 

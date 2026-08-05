@@ -1,77 +1,31 @@
-import React, { useState } from 'react';
-import { Divider, Group, Popover, Stack, Table, Text, Title, UnstyledButton } from '@mantine/core';
+import React from 'react';
+import Popover from './Popover';
+import s from './statements.module.css';
+import { useUnits } from '../../../Utilities/UnitsContext';
+import { formatCurrency } from '../../../Utilities/formatters';
 
-const RatioTooltipCell = ({ formatted, tooltip, hideYoy }) => {
-  const [opened, setOpened] = useState(false);
-  const [hovered, setHovered] = useState(false);
+// Ratio keys whose value is a raw dollar amount (not a multiple or
+// percentage). These get reformatted on the frontend so they respect the
+// global Millions/Billions toggle from Preferences instead of using the
+// hardcoded "$X.XXM" string the backend produces.
+const DOLLAR_VALUE_RATIOS = new Set(['revenue', 'free_cash_flow']);
 
-  if (!formatted) return '';
-  if (!tooltip) return formatted;
+// Ratios where a lower value is the "good" outcome (leverage, plant age, cost/burden
+// ratios). Color coding inverts for these: a negative YoY delta is green, positive red.
+const RATIO_YOY_INVERTED = new Set([
+  'debt_to_equity',
+  'debt_to_total_capitalization',
+  'total_assets_to_equity',
+  'average_age_of_plant',
+  'sga_percent_of_revenue',
+  'effective_tax_rate',
+]);
 
-  const { label, formula, definition, components, yoy } = tooltip;
-  const driver = yoy?.primary_driver;
-  const showYoy = !hideYoy && yoy && typeof yoy.delta === 'number';
-
-  return (
-    <Popover
-      opened={opened}
-      onChange={setOpened}
-      width={340}
-      position="top"
-      withArrow
-      shadow="md"
-      closeOnClickOutside
-    >
-      <Popover.Target>
-        <UnstyledButton
-          onClick={() => setOpened((o) => !o)}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-          style={{
-            padding: '2px 6px',
-            borderRadius: 4,
-            backgroundColor: hovered || opened ? 'var(--mantine-color-gray-2)' : 'transparent',
-            transition: 'background-color 120ms ease',
-            cursor: 'pointer',
-            display: 'inline-block',
-            lineHeight: 1.2,
-          }}
-        >
-          {formatted}
-        </UnstyledButton>
-      </Popover.Target>
-      <Popover.Dropdown>
-        <Stack gap={6}>
-          <Text fw={600} size="sm">{label}</Text>
-          {formula && <Text size="xs" c="dimmed"><b>Formula:</b> {formula}</Text>}
-          {definition && <Text size="xs">{definition}</Text>}
-          {Array.isArray(components) && components.length > 0 && (
-            <Text size="xs" c="dimmed"><b>Components:</b> {components.join(', ')}</Text>
-          )}
-          {showYoy && (
-            <>
-              <Divider my={4} />
-              <Group gap="xs" wrap="nowrap">
-                <Text size="xs" fw={500}>YoY change:</Text>
-                <Text size="xs">
-                  {yoy.delta >= 0 ? '+' : ''}{yoy.delta.toFixed(2)}
-                  {typeof yoy.delta_pct === 'number' ? ` (${yoy.delta_pct >= 0 ? '+' : ''}${yoy.delta_pct.toFixed(1)}%)` : ''}
-                </Text>
-              </Group>
-              {driver && (
-                <Text size="xs">
-                  <b>Primary driver:</b> {driver.component_label}
-                  {typeof driver.component_pct_change === 'number'
-                    ? ` (${driver.component_pct_change >= 0 ? '+' : ''}${driver.component_pct_change.toFixed(1)}%)`
-                    : ''}
-                </Text>
-              )}
-            </>
-          )}
-        </Stack>
-      </Popover.Dropdown>
-    </Popover>
-  );
+const yoyClass = (ratioKey, delta) => {
+  if (typeof delta !== 'number' || delta === 0) return '';
+  const inverted = RATIO_YOY_INVERTED.has(ratioKey);
+  const isGood = inverted ? delta < 0 : delta > 0;
+  return isGood ? s.deltaUp : s.deltaDown;
 };
 
 const RATIO_LABELS = {
@@ -88,7 +42,7 @@ const RATIO_LABELS = {
   average_remaining_life_of_plant: 'Average Remaining Life of Plant',
   average_total_life_span_of_plant: 'Average Total Life Span of Plant',
   inventory_turnover: 'Inventory Turnover',
-  receivables_ratio: 'Receivables Ratio',
+  receivables_turnover: 'Receivables Turnover',
   operating_cash_flow_to_net_income: 'Operating Cash Flow / Net Income',
   capex_to_depreciation: 'CapEx / Depreciation',
   free_cash_flow: 'Free Cash Flow',
@@ -106,275 +60,237 @@ const RATIO_LABELS = {
   earnings_per_share: 'Earnings Per Share',
 };
 
-const FinancialComparisonTable = ({ data, selectedTickers }) => {
-  // Add error handling for missing or malformed data
+// Section order and sub-grouping mirror the legacy one-pager layout:
+// groups within a section render with a blank-row gap (no header),
+// sections render with an underlined bold title row.
+const SECTIONS = [
+  {
+    title: 'Liquidity Ratios',
+    groups: [['net_working_capital_ratio', 'current_ratio', 'quick_ratio', 'cash_ratio']],
+  },
+  {
+    title: 'Capital Ratios',
+    groups: [
+      ['debt_to_equity', 'debt_to_total_capitalization', 'total_assets_to_equity'],
+      ['book_value', 'tangible_book_value'],
+      ['average_age_of_plant', 'average_remaining_life_of_plant', 'average_total_life_span_of_plant'],
+    ],
+  },
+  { title: 'Operating Ratios', groups: [['inventory_turnover', 'receivables_turnover']] },
+  {
+    title: 'Quality of Earnings Analysis',
+    groups: [['operating_cash_flow_to_net_income', 'capex_to_depreciation', 'free_cash_flow']],
+  },
+  {
+    title: 'Margins and Profitability',
+    groups: [
+      ['revenue', 'gross_profit_margin', 'operating_margin', 'net_margin', 'ebitda_margin', 'sga_percent_of_revenue', 'effective_tax_rate'],
+      ['roa', 'roe', 'roic', 'interest_coverage', 'earnings_per_share'],
+    ],
+  },
+];
+
+const TooltipCell = ({ formatted, tooltip, hideYoy, ratioKey, nullReason, rowLabel }) => {
+  if (!formatted) return '';
+  // Structural N/A: the backend couldn't compute the ratio for a known
+  // filer-schema reason (e.g. airlines don't report SG&A). Render "N/A"
+  // with the explanation in a popover so the user understands why.
+  if (nullReason) {
+    const naContent = (
+      <div className={s.stackSm}>
+        <div className={s.popTitle}>{rowLabel || 'Not applicable'}</div>
+        <div>{nullReason}</div>
+      </div>
+    );
+    return (
+      <Popover content={naContent}>
+        <span className={s.popDim} style={{ fontStyle: 'italic' }}>N/A</span>
+      </Popover>
+    );
+  }
+  if (!tooltip) return formatted;
+
+  const { label, formula, definition, components, yoy } = tooltip;
+  const driver = yoy?.primary_driver;
+  const showYoy = !hideYoy && yoy && typeof yoy.delta === 'number';
+
+  const content = (
+    <div className={s.stackSm}>
+      <div className={s.popTitle}>{label}</div>
+      {formula && <div className={s.popDim}><b>Formula:</b> {formula}</div>}
+      {definition && <div>{definition}</div>}
+      {Array.isArray(components) && components.length > 0 && (
+        <div className={s.popDim}><b>Components:</b> {components.join(', ')}</div>
+      )}
+      {showYoy && (
+        <>
+          <div className={s.popDivider} />
+          <div>
+            <span style={{ fontWeight: 500 }}>YoY change: </span>
+            <span className={yoyClass(ratioKey, yoy.delta)}>
+              {yoy.delta >= 0 ? '+' : ''}{yoy.delta.toFixed(2)}
+              {typeof yoy.delta_pct === 'number'
+                ? ` (${yoy.delta_pct >= 0 ? '+' : ''}${yoy.delta_pct.toFixed(1)}%)`
+                : ''}
+            </span>
+          </div>
+          {driver && (
+            <div>
+              <b>Primary driver:</b> {driver.component_label}
+              {typeof driver.component_pct_change === 'number'
+                ? ` (${driver.component_pct_change >= 0 ? '+' : ''}${driver.component_pct_change.toFixed(1)}%)`
+                : ''}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  return <Popover content={content}>{formatted}</Popover>;
+};
+
+const SkeletonRow = () => (
+  <div style={{ display: 'flex', gap: 8 }}>
+    {Array.from({ length: 4 }).map((_, i) => (
+      <div key={i} style={{ height: 12, flex: 1, background: 'hsl(var(--muted))', borderRadius: 4 }} />
+    ))}
+  </div>
+);
+
+const FinancialComparisonTable = ({ data, selectedTickers, loading }) => {
+  const units = useUnits();
+  if (loading && (!data || !data.calculated_ratios)) {
+    return (
+      <div className={s.stack} style={{ paddingTop: 16 }}>
+        <h3 className={s.sectionLabel}>Ratio and Margin Analysis</h3>
+        <div className={s.card}>
+          <div className={s.stack}>
+            {Array.from({ length: 14 }, (_, i) => <SkeletonRow key={i} />)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!data || !data.calculated_ratios) {
-    return <Title order={4}>No data available. Please search first.</Title>;
+    return <h4 className={s.cardTitle} style={{ paddingTop: 16 }}>No data available. Please search first.</h4>;
   }
 
   const { peer_group_ratios } = data.calculated_ratios;
-  
   if (!peer_group_ratios || Object.keys(peer_group_ratios).length === 0) {
-    return <Title order={4}>No ratio data found.</Title>;
+    return <h4 className={s.cardTitle}>No ratio data found.</h4>;
   }
 
   const allCompanies = Object.entries(peer_group_ratios).map(([ticker, info]) => ({
     ticker,
     name: info.company_name,
-    periods: info.periods
+    periods: info.periods,
   }));
-
-  const companies = selectedTickers 
-    ? allCompanies.filter(company => selectedTickers.includes(company.ticker))
+  const companies = selectedTickers
+    ? allCompanies.filter((company) => selectedTickers.includes(company.ticker))
     : allCompanies;
 
-  if (companies.length === 0) {
-    return <Title order={4}>No companies selected</Title>;
-  }
+  if (companies.length === 0) return <h4 className={s.cardTitle}>No companies selected</h4>;
 
   const firstCompany = companies[0];
-  const years = Object.keys(firstCompany.periods).sort((a, b) => b.localeCompare(a)); // Recent first
-
-  if (years.length === 0) {
-    return <Title order={4}>No periods available</Title>;
-  }
-
-  const ratioOrder_liquidity = [
-    'net_working_capital_ratio',
-    'current_ratio',
-    'quick_ratio',
-    'cash_ratio',
-  ];
-
-  const ratioOrder_capital = [
-    'debt_to_equity',
-    'debt_to_total_capitalization',
-    'total_assets_to_equity',
-    'book_value',
-    'tangible_book_value',
-    'average_age_of_plant',
-    'average_remaining_life_of_plant',
-    'average_total_life_span_of_plant',
-  ];
-
-  const ratioOrder_operation = [
-    'inventory_turnover',
-    'receivables_ratio',
-  ];
-
-  const ratioOrder_earningsquality = [
-    'operating_cash_flow_to_net_income',
-    'capex_to_depreciation',
-    'free_cash_flow',
-  ];
-
-  const ratioOrder_profitability = [
-    'revenue',
-    'gross_profit_margin',
-    'operating_margin',
-    'net_margin',
-    'ebitda_margin',
-    'sga_percent_of_revenue',
-    'effective_tax_rate',
-    'roa',
-    'roe',
-    'roic',
-    'interest_coverage',
-    'earnings_per_share',
-  ];
-
-
-  // const ratioOrder = [
-  //   'net_working_capital_ratio',
-  //   'current_ratio',
-  //   'quick_ratio',
-  //   'cash_ratio',
-  //   'debt_to_equity',
-  //   'debt_to_total_capitalization',
-  //   'total_assets_to_equity',
-  //   'book_value',
-  //   'tangible_book_value',
-  //   'Average Age of Plant',
-  //   'Average Remaining Life of Plant',
-  //   'Average Total Life Span of Plant',
-  //   'inventory_turnover',
-  //   'receivables_ratio',
-  //   'operating_cash_flow_to_net_income',
-  //   'capex_to_depreciation',
-  //   'gross_profit_margin',
-  //   'operating_margin',
-  //   'net_margin',
-  //   'ebitda_margin',
-  //   'debt_to_equity',
-  //   'debt_to_total_capitalization',
-  //   'total_assets_to_equity',
-  //   'return_on_equity',
-  //   'return_on_assets',
-  //   'return_on_invested_capital',
-  //   'interest_coverage',
-  //   'net_working_capital_ratio',
-  // ];
+  const years = Object.keys(firstCompany.periods).sort((a, b) => b.localeCompare(a));
+  if (years.length === 0) return <h4 className={s.cardTitle}>No periods available</h4>;
 
   const firstPeriod = years[0];
   const firstRatios = firstCompany.periods[firstPeriod]?.ratios || {};
 
-  // Function to get formatted value or empty string if missing
-  const getFormattedValue = (company, year, ratioKey) => {
-    try {
-      return company.periods[year]?.ratios[ratioKey]?.formatted || '';
-    } catch {
-      return '';
-    }
-  };
-
   const getRatioEntry = (company, year, ratioKey) => {
-    try {
-      return company.periods[year]?.ratios[ratioKey] || null;
-    } catch {
-      return null;
-    }
+    try { return company.periods[year]?.ratios[ratioKey] || null; }
+    catch { return null; }
   };
 
-  // YoY driver info only makes sense for a single-ticker view. When comparing
-  // two or more tickers, suppress YoY and show formula/definition/components only.
   const hideYoy = companies.length > 1;
-
-  // Calculate number of data columns
   const numDataCols = years.length * companies.length;
+  const totalCols = 1 + numDataCols;
+  const colWidth = numDataCols > 0 ? `${70 / numDataCols}%` : 'auto';
 
-  const headerCells = [<th key="metric" style={{ width: '30%' }}>Metric</th>];
-
-  years.forEach(year => {
-    companies.forEach(company => {
-      const colWidth = numDataCols > 0 ? `${70 / numDataCols}%` : 'auto';
-
-      headerCells.push(
-        <Table.Th
-          key={`${company.ticker}-${year}`}
-          style={{ textAlign: 'right', width: colWidth }}
-        >
-          {company.ticker} {year}
-        </Table.Th>
-
-      );
-    });
-  });
-
-  // Build table rows
-  const rows_liquidity = ratioOrder_liquidity.map((ratioKey) => {
-
+  const renderRatioRow = (ratioKey) => {
     const label = RATIO_LABELS[ratioKey] || firstRatios[ratioKey]?.label || ratioKey;
-    const cells = [<Table.Td key="label" style={{ fontWeight: 500 }}>{label}</Table.Td>];
+    const isDollarValue = DOLLAR_VALUE_RATIOS.has(ratioKey);
+    return (
+      <tr key={ratioKey}>
+        <td className={s.label}>{label}</td>
+        {years.map((year) =>
+          companies.map((company) => {
+            const entry = getRatioEntry(company, year, ratioKey);
+            // Dollar-amount ratios are stored raw on the server; format
+            // them through the unit-aware helper so the table matches the
+            // M/B toggle from Preferences. Other ratios keep the backend's
+            // string (percentages, multiples, etc.).
+            const formatted = isDollarValue && typeof entry?.value === 'number'
+              ? formatCurrency(entry.value, units)
+              : (entry?.formatted || '');
+            return (
+              <td key={`${company.ticker}-${year}`} className={s.num}>
+                <TooltipCell
+                  formatted={formatted}
+                  tooltip={entry?.tooltip}
+                  hideYoy={hideYoy}
+                  ratioKey={ratioKey}
+                  nullReason={entry?.null_reason}
+                  rowLabel={label}
+                />
+              </td>
+            );
+          })
+        )}
+      </tr>
+    );
+  };
 
-    years.forEach(year => {
-      companies.forEach(company => {
-        const entry = getRatioEntry(company, year, ratioKey);
-        cells.push(
-          <Table.Td key={`${company.ticker}-${year}`} style={{ textAlign: 'right' }}>
-            <RatioTooltipCell formatted={entry?.formatted || ''} tooltip={entry?.tooltip} hideYoy={hideYoy} />
-          </Table.Td>
+  const allRows = [];
+  SECTIONS.forEach((section, sectionIdx) => {
+    allRows.push(
+      <tr key={`section-${section.title}`} className={s.sectionRow}>
+        <td colSpan={totalCols} style={{ paddingTop: sectionIdx === 0 ? 10 : 14 }}>
+          {section.title}
+        </td>
+      </tr>
+    );
+    section.groups.forEach((group, groupIdx) => {
+      if (groupIdx > 0) {
+        allRows.push(
+          <tr key={`spacer-${section.title}-${groupIdx}`} className={s.spacerRow}>
+            <td colSpan={totalCols} />
+          </tr>
         );
-      });
+      }
+      group.forEach((ratioKey) => allRows.push(renderRatioRow(ratioKey)));
     });
-
-    return <Table.Tr key={ratioKey}>{cells}</Table.Tr>;
-  });
-
-  // Capital
-  const rows_capital = ratioOrder_capital.map((ratioKey) => {
-
-    const label = RATIO_LABELS[ratioKey] || firstRatios[ratioKey]?.label || ratioKey;
-    const cells = [<Table.Td key="label" style={{ fontWeight: 500 }}>{label}</Table.Td>];
-
-    years.forEach(year => {
-      companies.forEach(company => {
-        const entry = getRatioEntry(company, year, ratioKey);
-        cells.push(
-          <Table.Td key={`${company.ticker}-${year}`} style={{ textAlign: 'right' }}>
-            <RatioTooltipCell formatted={entry?.formatted || ''} tooltip={entry?.tooltip} hideYoy={hideYoy} />
-          </Table.Td>
-        );
-      });
-    });
-
-    return <Table.Tr key={ratioKey}>{cells}</Table.Tr>;
-  });
-
-  // Operating
-  const rows_operating = ratioOrder_operation.map((ratioKey) => {
-
-    const label = RATIO_LABELS[ratioKey] || firstRatios[ratioKey]?.label || ratioKey;
-    const cells = [<Table.Td key="label" style={{ fontWeight: 500 }}>{label}</Table.Td>];
-
-    years.forEach(year => {
-      companies.forEach(company => {
-        const entry = getRatioEntry(company, year, ratioKey);
-        cells.push(
-          <Table.Td key={`${company.ticker}-${year}`} style={{ textAlign: 'right' }}>
-            <RatioTooltipCell formatted={entry?.formatted || ''} tooltip={entry?.tooltip} hideYoy={hideYoy} />
-          </Table.Td>
-        );
-      });
-    });
-
-    return <Table.Tr key={ratioKey}>{cells}</Table.Tr>;
-  });
-
-  // Earnings Quality
-  const rows_earnings_quality = ratioOrder_earningsquality.map((ratioKey) => {
-
-    const label = RATIO_LABELS[ratioKey] || firstRatios[ratioKey]?.label || ratioKey;
-    const cells = [<Table.Td key="label" style={{ fontWeight: 500 }}>{label}</Table.Td>];
-
-    years.forEach(year => {
-      companies.forEach(company => {
-        const entry = getRatioEntry(company, year, ratioKey);
-        cells.push(
-          <Table.Td key={`${company.ticker}-${year}`} style={{ textAlign: 'right' }}>
-            <RatioTooltipCell formatted={entry?.formatted || ''} tooltip={entry?.tooltip} hideYoy={hideYoy} />
-          </Table.Td>
-        );
-      });
-    });
-
-    return <Table.Tr key={ratioKey}>{cells}</Table.Tr>;
-  });
-
-  // Profitability
-  const rows_profitability = ratioOrder_profitability.map((ratioKey) => {
-
-    const label = RATIO_LABELS[ratioKey] || firstRatios[ratioKey]?.label || ratioKey;
-    const cells = [<Table.Td key="label" style={{ fontWeight: 500 }}>{label}</Table.Td>];
-
-    years.forEach(year => {
-      companies.forEach(company => {
-        const entry = getRatioEntry(company, year, ratioKey);
-        cells.push(
-          <Table.Td key={`${company.ticker}-${year}`} style={{ textAlign: 'right' }}>
-            <RatioTooltipCell formatted={entry?.formatted || ''} tooltip={entry?.tooltip} hideYoy={hideYoy} />
-          </Table.Td>
-        );
-      });
-    });
-
-    return <Table.Tr key={ratioKey}>{cells}</Table.Tr>;
   });
 
   return (
-    <div>
-      <Title pt={25} order={3}>Ratio and Margin Analysis</Title>
-      <Table highlightOnHover>
-        <Table.Thead>
-          <Table.Tr>{headerCells}</Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>{rows_liquidity}</Table.Tbody>
-        <Table.Tbody>{rows_capital}</Table.Tbody>
-        <Table.Tbody>{rows_operating}</Table.Tbody>
-        <Table.Tbody>{rows_earnings_quality}</Table.Tbody>
-        <Table.Tbody>{rows_profitability}</Table.Tbody>
-      </Table>
+    <div className={s.stack} style={{ paddingTop: 16 }}>
+      <h3 className={s.sectionLabel}>Ratio and Margin Analysis</h3>
+      <div className={s.card} style={{ padding: 0, overflowX: 'auto' }}>
+        <table className={s.table}>
+          <thead>
+            <tr>
+              <th style={{ width: '30%' }}>Metric</th>
+              {years.map((year) =>
+                companies.map((company) => (
+                  <th
+                    key={`${company.ticker}-${year}`}
+                    className={s.numHead}
+                    style={{ width: colWidth }}
+                  >
+                    {company.ticker} {year}
+                  </th>
+                ))
+              )}
+            </tr>
+          </thead>
+          <tbody>{allRows}</tbody>
+        </table>
+      </div>
     </div>
   );
 };
 
-export default FinancialComparisonTable
+export default FinancialComparisonTable;

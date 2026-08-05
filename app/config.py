@@ -1,6 +1,11 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
+from pathlib import Path
 import os
+
+# Resolve .env next to this file (app/.env) so alembic from repo root still loads it.
+_APP_DIR = Path(__file__).resolve().parent
+_DEFAULT_ENV_FILE = _APP_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -10,7 +15,7 @@ class Settings(BaseSettings):
     # Security — loaded from .env; app fails fast if missing.
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 300
 
     # OpenAI — loaded from .env.
     OPENAI_API_KEY: Optional[str] = None
@@ -38,9 +43,9 @@ class Settings(BaseSettings):
     PAID_TIER_LIMIT: int = 1000
     
     class Config:
-        env_file = os.environ.get('ENV_FILE', '.env')
+        env_file = os.environ.get('ENV_FILE', str(_DEFAULT_ENV_FILE))
         case_sensitive = True
         env_prefix = ""
 
 
-settings = Settings() 
+settings = Settings()

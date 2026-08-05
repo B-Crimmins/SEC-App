@@ -1,0 +1,11 @@
+import * as React from 'react';
+import { cn } from '@/src/lib/utils';
+
+const ScrollArea = React.forwardRef(({ className, children, ...props }, ref) => (
+  <div ref={ref} className={cn('relative overflow-auto scrollbar-thin', className)} {...props}>
+    {children}
+  </div>
+));
+ScrollArea.displayName = 'ScrollArea';
+
+export { ScrollArea };

@@ -1,504 +1,423 @@
-import { useMemo, useState } from 'react';
-import {
-  Badge,
-  Box,
-  Button,
-  Container,
-  Grid,
-  Group,
-  Paper,
-  SegmentedControl,
-  SimpleGrid,
-  Stack,
-  Table,
-  Text,
-  ThemeIcon,
-  Title,
-} from '@mantine/core';
+import { useNavigate } from 'react-router-dom';
 import {
   IconArrowRight,
-  IconChartLine,
-  IconFileAnalytics,
-  IconLock,
-  IconRobot,
-  IconSearch,
+  IconBook,
+  IconCalculator,
+  IconGitMerge,
+  IconInfoCircle,
   IconSparkles,
-  IconTrendingDown,
   IconTrendingUp,
 } from '@tabler/icons-react';
-import { useNavigate } from 'react-router-dom';
-import classes from './homestyle.module.css';
+import { Badge } from '../../src/components/ui/badge';
+import { Button } from '../../src/components/ui/button';
+import { Card } from '../../src/components/ui/card';
+import { cn } from '../../src/lib/utils';
 
-// --- Demo data (NVIDIA — fiscal years, rounded for narrative clarity) ----------
-const NVDA_PERIODS = ['FY22', 'FY23', 'FY24', 'FY25', 'FY26E'];
-const NVDA_SERIES = {
-  revenue:        [26.91, 26.97, 60.92, 130.50, 180.00],  // $B
-  netIncome:      [9.75,  4.37,  29.76, 72.88,  95.20],   // $B
-  grossMargin:    [64.9,  56.9,  72.7,  75.0,   75.5],    // %
-  operatingMargin:[37.3,  15.7,  54.1,  62.4,   63.8],    // %
-  eps:            [3.85,  1.74,  11.93, 29.17,  37.20],   // $
-};
+// ---------------------------------------------------------------------------
+// Mock visuals — these render as static React but mimic the actual app
+// surfaces (ratio table with explanatory tooltip, DCF + reverse-DCF side by
+// side, three-statement linkage diagram). The point of the landing page is
+// to show what the app is, not to tell.
+// ---------------------------------------------------------------------------
 
-const PEER_SNAPSHOT = [
-  { ticker: 'NVDA', rev: 130.50, revGrowth: 114.3, grossMargin: 75.0, opMargin: 62.4 },
-  { ticker: 'AMD',  rev: 25.79,  revGrowth: 13.7,  grossMargin: 49.4, opMargin: 7.8  },
-  { ticker: 'INTC', rev: 53.10,  revGrowth: -2.1,  grossMargin: 32.7, opMargin: -8.3 },
-];
-
-const METRIC_CARDS = [
-  { key: 'revenue',         label: 'Revenue',          unit: '$B',  decimals: 1 },
-  { key: 'netIncome',       label: 'Net Income',       unit: '$B',  decimals: 1 },
-  { key: 'grossMargin',     label: 'Gross Margin',     unit: '%',   decimals: 1 },
-  { key: 'operatingMargin', label: 'Operating Margin', unit: '%',   decimals: 1 },
-];
-
-const CHART_TOGGLES = [
-  { label: 'Revenue',    value: 'revenue' },
-  { label: 'Margins',    value: 'margins' },
-  { label: 'EPS',        value: 'eps' },
-];
-
-// --- Small SVG sparkline --------------------------------------------------------
-const Sparkline = ({ data, width = 120, height = 36, positive = true }) => {
-  if (!data?.length) return null;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const stepX = width / (data.length - 1);
-  const points = data
-    .map((v, i) => `${i * stepX},${height - ((v - min) / range) * height}`)
-    .join(' ');
-  const stroke = positive ? 'var(--mantine-color-gain-5)' : 'var(--mantine-color-loss-5)';
-  const fill = positive ? 'rgba(47, 174, 110, 0.12)' : 'rgba(217, 66, 66, 0.12)';
-  const areaPts = `0,${height} ${points} ${width},${height}`;
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
-      <polygon points={areaPts} fill={fill} />
-      <polyline points={points} fill="none" stroke={stroke} strokeWidth="1.8" strokeLinejoin="round" />
-    </svg>
-  );
-};
-
-// --- Primary line chart ---------------------------------------------------------
-const LineChart = ({ periods, series, formatter }) => {
-  const width = 720;
-  const height = 260;
-  const padX = 40;
-  const padY = 24;
-  const plotW = width - padX * 2;
-  const plotH = height - padY * 2;
-
-  const all = series.flatMap((s) => s.values);
-  const min = Math.min(...all);
-  const max = Math.max(...all);
-  const range = max - min || 1;
-  const stepX = plotW / (periods.length - 1);
-
-  const colors = ['var(--mantine-color-intrinsiq-4)', 'var(--mantine-color-gain-5)', 'var(--mantine-color-loss-5)'];
-
-  const gridY = [0, 0.25, 0.5, 0.75, 1].map((t) => padY + plotH * t);
-
-  return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', maxWidth: '100%' }}>
-      {gridY.map((y, i) => (
-        <line key={i} x1={padX} x2={width - padX} y1={y} y2={y} stroke="rgba(255,255,255,0.06)" />
-      ))}
-      {periods.map((p, i) => (
-        <text
-          key={p}
-          x={padX + i * stepX}
-          y={height - 4}
-          fontSize="11"
-          fill="var(--mantine-color-gray-5)"
-          textAnchor="middle"
-        >
-          {p}
-        </text>
-      ))}
-      {series.map((s, sIdx) => {
-        const pts = s.values
-          .map((v, i) => `${padX + i * stepX},${padY + plotH - ((v - min) / range) * plotH}`)
-          .join(' ');
-        return (
-          <g key={s.label}>
-            <polyline points={pts} fill="none" stroke={colors[sIdx % colors.length]} strokeWidth="2.25" strokeLinejoin="round" />
-            {s.values.map((v, i) => (
-              <circle
-                key={i}
-                cx={padX + i * stepX}
-                cy={padY + plotH - ((v - min) / range) * plotH}
-                r="3"
-                fill={colors[sIdx % colors.length]}
-              />
-            ))}
-          </g>
-        );
-      })}
-      {/* Legend */}
-      <g transform={`translate(${padX}, 8)`}>
-        {series.map((s, i) => (
-          <g key={s.label} transform={`translate(${i * 110}, 0)`}>
-            <rect width="10" height="10" y="2" fill={colors[i % colors.length]} rx="2" />
-            <text x="16" y="11" fontSize="11" fill="var(--mantine-color-gray-3)">{s.label}</text>
-          </g>
+const RatioMock = () => (
+  <div className="relative rounded-lg border border-border bg-card overflow-hidden shadow-lg">
+    <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-accent">Ratio Analysis</div>
+      <div className="text-xs text-muted-foreground">NVDA · FY24 → FY25</div>
+    </div>
+    <table className="w-full text-xs">
+      <tbody>
+        {[
+          { label: 'Gross Profit Margin', a: '72.7%', b: '75.0%', delta: '+230 bps', up: true },
+          { label: 'Operating Margin',    a: '54.1%', b: '62.4%', delta: '+830 bps', up: true, highlighted: true },
+          { label: 'Net Margin',          a: '48.9%', b: '55.9%', delta: '+700 bps', up: true },
+          { label: 'Return on Equity',    a: '91.5%', b: '119.2%', delta: '+27.7 pp', up: true },
+          { label: 'Debt to Equity',      a: '52.0%', b: '51.0%', delta: '−1.0 pp', up: true },
+          { label: 'Current Ratio',       a: '405%',  b: '423%',  delta: '+18.0 pp', up: true },
+        ].map((row, i) => (
+          <tr key={i} className={cn('border-b border-border/40 last:border-b-0', row.highlighted && 'bg-accent/8')}>
+            <td className="px-3 py-2 font-medium">{row.label}</td>
+            <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{row.a}</td>
+            <td className="px-3 py-2 text-right tabular-nums">{row.b}</td>
+            <td className={cn('px-3 py-2 text-right tabular-nums text-xs', row.up ? 'text-gain' : 'text-loss')}>{row.delta}</td>
+          </tr>
         ))}
-      </g>
-      {/* Y-axis hint */}
-      <text x={padX - 6} y={padY + 4} fontSize="10" fill="var(--mantine-color-gray-6)" textAnchor="end">
-        {formatter(max)}
-      </text>
-      <text x={padX - 6} y={height - padY} fontSize="10" fill="var(--mantine-color-gray-6)" textAnchor="end">
-        {formatter(min)}
-      </text>
-    </svg>
-  );
-};
+      </tbody>
+    </table>
 
-// --- Helpers --------------------------------------------------------------------
-const pctChange = (arr) => {
-  if (arr.length < 2) return 0;
-  const prev = arr[arr.length - 2];
-  const curr = arr[arr.length - 1];
-  if (!prev) return 0;
-  return ((curr - prev) / Math.abs(prev)) * 100;
-};
-
-const formatVal = (v, unit, decimals) => {
-  if (unit === '$B') return `$${v.toFixed(decimals)}B`;
-  if (unit === '%') return `${v.toFixed(decimals)}%`;
-  if (unit === '$') return `$${v.toFixed(decimals)}`;
-  return v.toFixed(decimals);
-};
-
-// --- Page sections --------------------------------------------------------------
-const Hero = ({ onGetStarted }) => (
-  <Box className={classes.hero}>
-    <Container size="lg" py={80}>
-      <Stack gap="lg" align="center" ta="center">
-        <Badge size="lg" variant="light" color="intrinsiq" radius="sm">
-          <Group gap={6}><IconSparkles size={14} /> AI-native fundamentals</Group>
-        </Badge>
-        <Title order={1} className={classes.heroTitle}>
-          Data generation and analysis on both a single copmany and peer-to-peer basis
-          <Text component="span" inherit className={classes.heroAccent}> in minutes</Text>
-        </Title>
-        <Text size="lg" c="dimmed" maw={680}>
-          Intrinsiq pulls fundamentals straight from SEC filings, computes peer-adjusted ratios,
-          and explains what changed — so you can spend your time deciding, not gathering.
-        </Text>
-        <Group gap="sm" mt="sm">
-          <Button size="md" rightSection={<IconArrowRight size={16} />} onClick={onGetStarted}>
-            Sign in to analyze any ticker
-          </Button>
-          <Button size="md" variant="default" component="a" href="#demo">
-            See the NVDA demo
-          </Button>
-        </Group>
-        <Text size="xs" c="dimmed" mt="xs">
-          Free account required — no credit card to start.
-        </Text>
-      </Stack>
-    </Container>
-  </Box>
+    {/* Open tooltip overlay — pinned to operating margin row */}
+    <div className="absolute right-3 top-[112px] w-[260px] rounded-md border border-border bg-popover/95 backdrop-blur-sm p-3 text-xs shadow-2xl">
+      <div className="font-semibold text-foreground mb-1">Operating Margin</div>
+      <div className="text-muted-foreground mb-2">
+        <span className="font-medium text-foreground">Formula: </span>
+        Operating Income ÷ Revenue
+      </div>
+      <div className="text-muted-foreground mb-2">
+        How much of each revenue dollar survives after the cost of running the business.
+      </div>
+      <div className="h-px bg-border my-2" />
+      <div className="text-foreground">
+        <span className="font-medium">YoY: </span>
+        <span className="text-gain font-semibold">+830 bps (+15.3%)</span>
+      </div>
+      <div className="text-muted-foreground mt-1">
+        <span className="font-medium text-foreground">Primary driver: </span>
+        revenue scaled faster than opex (+114% rev vs +47% opex)
+      </div>
+    </div>
+  </div>
 );
 
-const MetricCard = ({ label, value, change, sparkData, unit, decimals }) => {
-  const positive = change >= 0;
-  return (
-    <Paper withBorder p="md" radius="md" className={classes.metricCard}>
-      <Text size="xs" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: '0.04em' }}>
-        {label}
-      </Text>
-      <Group justify="space-between" align="flex-end" mt={6}>
-        <Title order={2} style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {formatVal(value, unit, decimals)}
-        </Title>
-        <Sparkline data={sparkData} positive={positive} />
-      </Group>
-      <Group gap={4} mt={6}>
-        {positive
-          ? <IconTrendingUp size={14} color="var(--mantine-color-gain-5)" />
-          : <IconTrendingDown size={14} color="var(--mantine-color-loss-5)" />}
-        <Text size="sm" c={positive ? 'gain.5' : 'loss.5'} fw={600}>
-          {positive ? '+' : ''}{change.toFixed(1)}% YoY
-        </Text>
-        <Text size="sm" c="dimmed">· {NVDA_PERIODS.at(-2)} → {NVDA_PERIODS.at(-1)}</Text>
-      </Group>
-    </Paper>
-  );
-};
+const DcfMock = () => (
+  <div className="rounded-lg border border-border bg-card overflow-hidden shadow-lg">
+    <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+      <IconCalculator size={14} className="text-accent" />
+      <div className="text-[10px] font-bold uppercase tracking-widest text-accent">DCF · Reverse DCF</div>
+    </div>
 
-const DemoDashboard = ({ onGetStarted }) => {
-  const [chartMode, setChartMode] = useState('revenue');
-
-  const chartConfig = useMemo(() => {
-    if (chartMode === 'revenue') {
-      return {
-        series: [{ label: 'Revenue ($B)', values: NVDA_SERIES.revenue }],
-        formatter: (v) => `$${v.toFixed(0)}B`,
-      };
-    }
-    if (chartMode === 'margins') {
-      return {
-        series: [
-          { label: 'Gross Margin', values: NVDA_SERIES.grossMargin },
-          { label: 'Operating Margin', values: NVDA_SERIES.operatingMargin },
-        ],
-        formatter: (v) => `${v.toFixed(0)}%`,
-      };
-    }
-    return {
-      series: [{ label: 'Diluted EPS ($)', values: NVDA_SERIES.eps }],
-      formatter: (v) => `$${v.toFixed(0)}`,
-    };
-  }, [chartMode]);
-
-  return (
-    <Container size="lg" id="demo" py={60}>
-      <Stack gap={6} mb="lg">
-        <Group gap="xs">
-          <Badge variant="light" color="gain" radius="sm">Live demo</Badge>
-          <Text size="sm" c="dimmed">Powered by real SEC filings · NVIDIA Corporation (NVDA)</Text>
-        </Group>
-        <Title order={2}>How a full analysis looks in Intrinsiq</Title>
-        <Text c="dimmed" maw={680}>
-          This is the same view you get inside the app — just pre-loaded with NVDA.
-          Sign in to run it on any US-listed ticker.
-        </Text>
-      </Stack>
-
-      <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md" mb="lg">
-        {METRIC_CARDS.map((m) => (
-          <MetricCard
-            key={m.key}
-            label={m.label}
-            value={NVDA_SERIES[m.key].at(-1)}
-            change={pctChange(NVDA_SERIES[m.key])}
-            sparkData={NVDA_SERIES[m.key]}
-            unit={m.unit}
-            decimals={m.decimals}
-          />
+    <div className="grid grid-cols-2 divide-x divide-border">
+      <div className="p-3 space-y-3">
+        <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Forward DCF — your assumptions</div>
+        {[
+          { label: 'WACC',            val: '9.4%',  pct: 0.32 },
+          { label: 'Revenue growth',  val: '5.0%',  pct: 0.18 },
+          { label: 'Terminal growth', val: '3.0%',  pct: 0.12 },
+        ].map((row) => (
+          <div key={row.label}>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-muted-foreground">{row.label}</span>
+              <span className="tabular-nums font-medium">{row.val}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+              <div className="h-full bg-accent/70" style={{ width: `${row.pct * 100}%` }} />
+            </div>
+          </div>
         ))}
-      </SimpleGrid>
+        <div className="pt-2 mt-2 border-t border-border">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Per Share Value</div>
+          <div className="text-xl font-bold tabular-nums">$143.33</div>
+        </div>
+      </div>
 
-      <Grid gutter="md">
-        <Grid.Col span={{ base: 12, md: 8 }}>
-          <Paper withBorder p="md" radius="md">
-            <Group justify="space-between" mb="sm">
-              <Group gap="xs">
-                <ThemeIcon variant="light" color="intrinsiq" radius="sm"><IconChartLine size={16} /></ThemeIcon>
-                <Title order={4}>NVDA — 5-year trajectory</Title>
-              </Group>
-              <SegmentedControl
-                size="xs"
-                data={CHART_TOGGLES}
-                value={chartMode}
-                onChange={setChartMode}
-              />
-            </Group>
-            <LineChart periods={NVDA_PERIODS} series={chartConfig.series} formatter={chartConfig.formatter} />
-          </Paper>
-        </Grid.Col>
+      <div className="p-3 space-y-3 bg-accent/[0.04]">
+        <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Reverse DCF — market-implied</div>
+        {[
+          { label: 'WACC',            val: '9.4%',  pct: 0.32 },
+          { label: 'Revenue growth',  val: '14.5%', pct: 0.62, solved: true },
+          { label: 'Terminal growth', val: '3.0%',  pct: 0.12 },
+        ].map((row) => (
+          <div key={row.label} className={cn(row.solved && '-mx-3 px-3 py-1 bg-accent/15 rounded')}>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className={cn('text-muted-foreground', row.solved && 'text-foreground font-semibold')}>
+                {row.label}
+                {row.solved && (
+                  <span className="ml-1.5 text-[8px] uppercase tracking-wider bg-accent text-accent-foreground px-1 rounded">solved</span>
+                )}
+              </span>
+              <span className={cn('tabular-nums', row.solved ? 'text-accent font-bold' : 'font-medium')}>{row.val}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+              <div className={cn('h-full', row.solved ? 'bg-accent' : 'bg-accent/70')} style={{ width: `${row.pct * 100}%` }} />
+            </div>
+          </div>
+        ))}
+        <div className="pt-2 mt-2 border-t border-border">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Target Price</div>
+          <div className="text-xl font-bold tabular-nums text-accent">$200.00</div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
 
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <Paper withBorder p="md" radius="md" h="100%">
-            <Group gap="xs" mb="xs">
-              <ThemeIcon variant="light" color="gain" radius="sm"><IconSparkles size={16} /></ThemeIcon>
-              <Title order={4}>What changed</Title>
-            </Group>
-            <Stack gap="sm" mt="xs">
-              <WhatChangedItem
-                tone="gain"
-                title="Revenue accelerated +114% YoY"
-                body="Data center segment drove the move — H100/H200 shipments into hyperscaler capex cycles."
-              />
-              <WhatChangedItem
-                tone="gain"
-                title="Operating margin expanded +830 bps"
-                body="Mix shift toward high-margin accelerators outpaced opex growth."
-              />
-              <WhatChangedItem
-                tone="neutral"
-                title="Gross margin near structural ceiling"
-                body="75.0% leaves limited upside — watch for ASP pressure from custom silicon."
-              />
-            </Stack>
-          </Paper>
-        </Grid.Col>
-      </Grid>
-
-      <Paper withBorder p="md" radius="md" mt="md">
-        <Group justify="space-between" mb="sm">
-          <Title order={4}>Peer snapshot — most recent fiscal year</Title>
-          <Badge variant="light" color="gray" radius="sm">NVDA vs AMD vs INTC</Badge>
-        </Group>
-        <Table highlightOnHover verticalSpacing="sm">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Ticker</Table.Th>
-              <Table.Th style={{ textAlign: 'right' }}>Revenue ($B)</Table.Th>
-              <Table.Th style={{ textAlign: 'right' }}>Revenue Growth</Table.Th>
-              <Table.Th style={{ textAlign: 'right' }}>Gross Margin</Table.Th>
-              <Table.Th style={{ textAlign: 'right' }}>Operating Margin</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {PEER_SNAPSHOT.map((p) => (
-              <Table.Tr key={p.ticker}>
-                <Table.Td fw={600}>{p.ticker}</Table.Td>
-                <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  ${p.rev.toFixed(1)}B
-                </Table.Td>
-                <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  <Text component="span" c={p.revGrowth >= 0 ? 'gain.5' : 'loss.5'} fw={600}>
-                    {p.revGrowth >= 0 ? '+' : ''}{p.revGrowth.toFixed(1)}%
-                  </Text>
-                </Table.Td>
-                <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {p.grossMargin.toFixed(1)}%
-                </Table.Td>
-                <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  <Text component="span" c={p.opMargin >= 0 ? 'gain.5' : 'loss.5'} fw={600}>
-                    {p.opMargin.toFixed(1)}%
-                  </Text>
-                </Table.Td>
-              </Table.Tr>
+const LinkageMock = () => (
+  <div className="rounded-lg border border-border bg-card overflow-hidden shadow-lg">
+    <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+      <IconGitMerge size={14} className="text-accent" />
+      <div className="text-[10px] font-bold uppercase tracking-widest text-accent">Three-Statement Linkages</div>
+    </div>
+    <div className="p-4">
+      <svg viewBox="0 0 380 240" className="w-full">
+        {/* Three statement cards */}
+        {[
+          { x: 8,   y: 10, label: 'IS', items: ['Revenue', 'Operating Income', 'Net Income', 'D&A'] },
+          { x: 140, y: 10, label: 'BS', items: ['Cash', 'Inventory', 'PP&E', 'LT Debt', 'Retained Earnings'] },
+          { x: 272, y: 10, label: 'CF', items: ['Net Income', '+ D&A', 'Δ Inventory', 'CapEx', 'Δ Cash'] },
+        ].map((node, i) => (
+          <g key={i}>
+            <rect
+              x={node.x} y={node.y}
+              width={100} height={node.items.length * 18 + 26}
+              rx={6}
+              fill="hsl(var(--card-hover) / 0.6)"
+              stroke="hsl(var(--border))"
+              strokeWidth="1"
+            />
+            <text x={node.x + 8} y={node.y + 14} fontSize="10" fontWeight="700" fill="hsl(var(--accent))" letterSpacing="1">
+              {node.label}
+            </text>
+            {node.items.map((item, j) => (
+              <text
+                key={j}
+                x={node.x + 8}
+                y={node.y + 30 + j * 18}
+                fontSize="9"
+                fill="hsl(var(--foreground))"
+              >
+                {item}
+              </text>
             ))}
-          </Table.Tbody>
-        </Table>
-      </Paper>
+          </g>
+        ))}
 
-      <Group justify="center" mt="xl">
-        <Button size="md" rightSection={<IconArrowRight size={16} />} onClick={onGetStarted}>
-          Run this on your ticker
-        </Button>
-      </Group>
-    </Container>
-  );
-};
+        {/* Edges with labels */}
+        {[
+          { from: [108, 65],  to: [272, 144], color: 'hsl(var(--accent))', label: 'NI → Retained Earnings' },
+          { from: [108, 65],  to: [272, 50],  color: 'hsl(var(--accent))', label: 'NI → Op CF start' },
+          { from: [108, 83],  to: [272, 68],  color: 'hsl(var(--gain))',   label: 'D&A add-back' },
+          { from: [240, 84],  to: [272, 86],  color: 'hsl(var(--gain))',   label: 'Δ Inventory' },
+          { from: [240, 102], to: [272, 104], color: 'hsl(var(--loss))',   label: 'Δ PP&E → CapEx' },
+        ].map((e, i) => {
+          const midX = (e.from[0] + e.to[0]) / 2;
+          const midY = (e.from[1] + e.to[1]) / 2;
+          return (
+            <g key={i}>
+              <path
+                d={`M ${e.from[0]} ${e.from[1]} C ${midX} ${e.from[1]}, ${midX} ${e.to[1]}, ${e.to[0]} ${e.to[1]}`}
+                fill="none"
+                stroke={e.color}
+                strokeWidth="1.2"
+                opacity="0.85"
+              />
+              <circle cx={e.to[0]} cy={e.to[1]} r="2" fill={e.color} />
+            </g>
+          );
+        })}
 
-const WhatChangedItem = ({ tone, title, body }) => {
-  const color = tone === 'gain' ? 'gain.5' : tone === 'loss' ? 'loss.5' : 'gray.5';
-  return (
-    <Box style={{ borderLeft: `2px solid var(--mantine-color-${tone === 'neutral' ? 'gray-6' : tone + '-5'})`, paddingLeft: 12 }}>
-      <Text size="sm" fw={600} c={color}>{title}</Text>
-      <Text size="xs" c="dimmed" mt={2}>{body}</Text>
-    </Box>
-  );
-};
+        {/* Side legend */}
+        <g transform="translate(8, 195)">
+          <text fontSize="8" fontWeight="700" fill="hsl(var(--muted-foreground))" letterSpacing="0.5">LINKAGES (CLICK FOR ROLLFORWARD)</text>
+          <g transform="translate(0, 12)">
+            <line x1="0" y1="4" x2="14" y2="4" stroke="hsl(var(--accent))" strokeWidth="1.8" />
+            <text x="18" y="7" fontSize="8" fill="hsl(var(--muted-foreground))">Income → equity / CF</text>
+            <line x1="130" y1="4" x2="144" y2="4" stroke="hsl(var(--gain))" strokeWidth="1.8" />
+            <text x="148" y="7" fontSize="8" fill="hsl(var(--muted-foreground))">Working capital ⇄ Op CF</text>
+            <line x1="260" y1="4" x2="274" y2="4" stroke="hsl(var(--loss))" strokeWidth="1.8" />
+            <text x="278" y="7" fontSize="8" fill="hsl(var(--muted-foreground))">Investing / financing</text>
+          </g>
+        </g>
+      </svg>
+    </div>
+  </div>
+);
+
+// ---------------------------------------------------------------------------
+
+const Hero = ({ onGetStarted }) => (
+  <section className="relative overflow-hidden border-b border-border bg-gradient-to-b from-accent/5 via-background to-background">
+    <div className="mx-auto max-w-6xl px-6 py-20 md:py-28">
+      <div className="grid md:grid-cols-5 gap-10 items-center">
+        <div className="md:col-span-3 space-y-6">
+          <Badge variant="outline" className="px-3 py-1 border-accent/40 bg-accent/10 text-accent">
+            <IconSparkles size={14} className="mr-1.5" /> Fundamentals from primary source
+          </Badge>
+          <h1 className="text-4xl md:text-6xl font-semibold tracking-tight leading-[1.05]">
+            Read a 10-K. Build the valuation.
+            <span className="text-accent"> See where every number lives.</span>
+          </h1>
+          <p className="text-lg text-muted-foreground max-w-xl">
+            Intrinsiq turns SEC filings into a working financial model — ratios with their formulas in plain view,
+            DCF running alongside its reverse, and every line on the income statement traced to its home on the
+            balance sheet and cash flow.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button size="lg" onClick={onGetStarted}>
+              Sign in to analyze any ticker <IconArrowRight size={16} />
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground pt-1">
+            Built for the analysis that happens before the spreadsheet — when you're still building intuition for
+            what the numbers mean.
+          </p>
+        </div>
+
+        {/* Hero side: the ratio mock as the visual hook */}
+        <div className="md:col-span-2">
+          <div className="relative">
+            <div className="absolute -inset-4 bg-gradient-to-tr from-accent/20 to-transparent blur-3xl opacity-50" />
+            <div className="relative">
+              <RatioMock />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
+const DemoGrid = () => (
+  <section id="demo" className="mx-auto max-w-6xl px-6 py-20">
+    <div className="space-y-2 mb-10 max-w-3xl">
+      <Badge variant="success">Inside the app</Badge>
+      <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">What you see when you load a ticker</h2>
+      <p className="text-muted-foreground">
+        Every screen is built to make the framework visible. You don't just see the ratio — you see what it means,
+        how it changed, and what's driving the change.
+      </p>
+    </div>
+
+    <div className="grid lg:grid-cols-2 gap-6">
+      {/* Wide row 1 — ratio explainer */}
+      <Card className="p-5 lg:col-span-2 grid md:grid-cols-2 gap-6 items-center">
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent/15 text-accent">
+              <IconBook size={16} />
+            </div>
+            <h3 className="text-lg font-semibold">Every ratio comes with its formula</h3>
+          </div>
+          <p className="text-muted-foreground text-sm mb-4">
+            Hover any value to see the definition, the formula, the components it's built from, and the primary
+            driver of its year-over-year move. No black boxes, no jargon left unexplained — the math is always one
+            interaction away.
+          </p>
+          <ul className="text-sm space-y-2 text-muted-foreground">
+            <li>• 30+ standardized ratios across liquidity, capital, operating, earnings quality, and profitability</li>
+            <li>• Tooltip shows formula, definition, components, and the driver behind every YoY change</li>
+            <li>• Structural N/As (banks, REITs, airlines) carry an explanation, not a silent blank</li>
+          </ul>
+        </div>
+        <RatioMock />
+      </Card>
+
+      {/* Row 2 — DCF / Reverse DCF */}
+      <Card className="p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent/15 text-accent">
+            <IconCalculator size={16} />
+          </div>
+          <h3 className="text-lg font-semibold">DCF and Reverse DCF, side by side</h3>
+        </div>
+        <p className="text-muted-foreground text-sm mb-4">
+          Move sliders, watch the per-share value update. Then flip the question: given the current market price,
+          what assumption does the market actually need to be true? Brent's-method solver finds it.
+        </p>
+        <DcfMock />
+      </Card>
+
+      {/* Row 2 — Linkage */}
+      <Card className="p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent/15 text-accent">
+            <IconGitMerge size={16} />
+          </div>
+          <h3 className="text-lg font-semibold">See how the three statements connect</h3>
+        </div>
+        <p className="text-muted-foreground text-sm mb-4">
+          Drag the IS, BS, and CF anywhere on a canvas. Click any linkage to open the rollforward —
+          NI → Retained Earnings, ΔPP&E → CapEx, ΔCash from all three sections — with the math broken out and
+          the variance line called out.
+        </p>
+        <LinkageMock />
+      </Card>
+    </div>
+  </section>
+);
 
 const FEATURES = [
   {
-    icon: IconFileAnalytics,
-    title: 'Fundamentals from primary source',
-    body: 'Every number links back to the SEC filing it came from. No scraped aggregators, no vendor reconciliation.',
+    title: 'Built on what the filer actually said',
+    body: 'Every figure traces back to a specific XBRL fact in a specific 10-K or 10-Q. No vendor reconciliations, no scraped aggregators — when you want to know where a number came from, it\'s one click away.',
   },
   {
-    icon: IconChartLine,
-    title: 'Peer-group ratios, explained',
-    body: 'Twenty-eight standardized ratios with hover-to-see formulas, definitions, and YoY driver attribution.',
+    title: 'WACC that matches your DCF',
+    body: 'Compute cost of capital from CAPM + the filings-derived effective tax rate, then pipe the result straight into the DCF discount rate. The two calculations share one tax assumption so the model stays internally consistent.',
   },
   {
-    icon: IconRobot,
-    title: 'AI that reads the 10-K for you',
-    body: 'Management discussion summarized into what actually changed — risks, drivers, and guidance shifts.',
-  },
-  {
-    icon: IconSearch,
-    title: 'Revenue segments by geography & product',
-    body: 'XBRL-parsed segment tables across periods, so you can see where growth really came from.',
+    title: 'Peer-aware, without losing the single-company view',
+    body: 'Toggle from a single ticker to a peer set and the same ratios re-render side by side. Common-size and segment views layer on top so you can see where revenue actually comes from.',
   },
 ];
 
-const FeatureStrip = () => (
-  <Box className={classes.featureStrip}>
-    <Container size="lg" py={60}>
-      <Stack gap="xs" mb="lg">
-        <Title order={2}>Built for analysts who have to show their work</Title>
-        <Text c="dimmed" maw={680}>
-          No black boxes. Every ratio, segment breakdown, and AI summary is traceable to the filing it came from.
-        </Text>
-      </Stack>
-      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+const TheToolboxStrip = () => (
+  <section className="border-y border-border bg-card/30">
+    <div className="mx-auto max-w-6xl px-6 py-16">
+      <div className="space-y-2 mb-8 max-w-3xl">
+        <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">The framework, working</h2>
+        <p className="text-muted-foreground">
+          The point isn't to hide the analysis behind a number — it's to make the analysis itself the product.
+          Below is what that means in practice.
+        </p>
+      </div>
+      <div className="grid md:grid-cols-3 gap-4">
         {FEATURES.map((f) => (
-          <Paper key={f.title} withBorder p="md" radius="md">
-            <Group gap="sm" align="flex-start">
-              <ThemeIcon variant="light" color="intrinsiq" size={38} radius="md">
-                <f.icon size={20} />
-              </ThemeIcon>
-              <Box>
-                <Text fw={600} mb={4}>{f.title}</Text>
-                <Text size="sm" c="dimmed">{f.body}</Text>
-              </Box>
-            </Group>
-          </Paper>
+          <Card key={f.title} className="p-5">
+            <div className="font-semibold mb-2">{f.title}</div>
+            <div className="text-sm text-muted-foreground leading-relaxed">{f.body}</div>
+          </Card>
         ))}
-      </SimpleGrid>
-    </Container>
-  </Box>
+      </div>
+    </div>
+  </section>
 );
 
 const WorkflowStrip = () => (
-  <Container size="lg" py={60}>
-    <Stack gap="xs" mb="lg">
-      <Title order={2}>From ticker to thesis in three steps</Title>
-      <Text c="dimmed" maw={680}>
-        The stack that used to take a junior analyst a week — compressed into a workflow.
-      </Text>
-    </Stack>
-    <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
+  <section className="mx-auto max-w-6xl px-6 py-16">
+    <div className="space-y-2 mb-8 max-w-3xl">
+      <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">From ticker to thesis in three moves</h2>
+      <p className="text-muted-foreground">
+        No data engineering. No reconciliations. Just the work that matters.
+      </p>
+    </div>
+    <div className="grid md:grid-cols-3 gap-4">
       {[
-        { n: '01', t: 'Search any US-listed ticker', b: 'Intrinsiq pulls the latest 10-K and 10-Q straight from EDGAR.' },
-        { n: '02', t: 'See fundamentals + ratios + segments', b: 'Three years of IS, BS, CF — plus peer-adjusted ratios and revenue segments by geography & product.' },
-        { n: '03', t: 'Ask the AI what to pay attention to', b: 'Summary of what changed, risks flagged in the filing, and DCF sanity checks.' },
+        { n: '01', t: 'Pull a filing', b: 'Type a US-listed ticker, pick 10-K or 10-Q, choose your period. Intrinsiq fetches the filing from EDGAR and renders the statements.' },
+        { n: '02', t: 'Explore the framework', b: 'Move between Balance Sheet, IS, CF, Ratios, Common Size, DCF, and Diagram. Hover for formulas. Click linkages for rollforwards.' },
+        { n: '03', t: 'Form a view', b: 'Run a DCF on your assumptions. Reverse-solve it against the current price. The gap between the two is the thesis you\'re building.' },
       ].map((s) => (
-        <Paper key={s.n} withBorder p="lg" radius="md">
-          <Text className={classes.stepNum}>{s.n}</Text>
-          <Text fw={600} mt="xs">{s.t}</Text>
-          <Text size="sm" c="dimmed" mt={4}>{s.b}</Text>
-        </Paper>
+        <Card key={s.n} className="p-5">
+          <div className="text-3xl font-bold text-accent/70 tabular-nums" style={{ fontFamily: "'Outfit', sans-serif" }}>{s.n}</div>
+          <div className="font-semibold mt-2">{s.t}</div>
+          <div className="text-sm text-muted-foreground mt-1 leading-relaxed">{s.b}</div>
+        </Card>
       ))}
-    </SimpleGrid>
-  </Container>
+    </div>
+  </section>
 );
 
 const FinalCTA = ({ onGetStarted }) => (
-  <Box className={classes.finalCta}>
-    <Container size="md" py={80}>
-      <Stack gap="md" align="center" ta="center">
-        <ThemeIcon size={52} radius="xl" variant="light" color="intrinsiq">
-          <IconLock size={24} />
-        </ThemeIcon>
-        <Title order={2}>Ready to analyze your own tickers?</Title>
-        <Text c="dimmed" maw={560}>
-          Sign in (free) to move past the NVDA demo and run Intrinsiq on any US-listed company.
-          Paid plans unlock peer comparisons, DCF, and segment-level history — but the basics
-          are yours without a credit card.
-        </Text>
-        <Group gap="sm" mt="sm">
-          <Button size="md" rightSection={<IconArrowRight size={16} />} onClick={onGetStarted}>
-            Create a free account
+  <section className="border-t border-border bg-gradient-to-b from-background to-accent/5">
+    <div className="mx-auto max-w-3xl px-6 py-20">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent/15 text-accent">
+          <IconTrendingUp size={24} />
+        </div>
+        <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Start with any US-listed ticker.</h2>
+        <p className="text-muted-foreground max-w-xl">
+          The basics are free — no credit card. Paid plans add peer comparisons, DCF, segment-level history,
+          and the AI summaries that read the 10-K for you.
+        </p>
+        <div className="flex flex-wrap gap-3 justify-center mt-2">
+          <Button size="lg" onClick={onGetStarted}>
+            Create a free account <IconArrowRight size={16} />
           </Button>
-          <Button size="md" variant="default" onClick={onGetStarted}>
-            Log in
+          <Button size="lg" variant="outline" onClick={onGetStarted}>
+            <IconInfoCircle size={16} /> Already have one — log in
           </Button>
-        </Group>
-      </Stack>
-    </Container>
-  </Box>
+        </div>
+      </div>
+    </div>
+  </section>
 );
 
 const Footer = () => (
-  <Box className={classes.footer}>
-    <Container size="lg" py="lg">
-      <Group justify="space-between">
-        <Text size="sm" c="dimmed">© {new Date().getFullYear()} Intrinsiq</Text>
-        <Text size="xs" c="dimmed">
-          Data sourced from SEC EDGAR. Not investment advice.
-        </Text>
-      </Group>
-    </Container>
-  </Box>
+  <footer className="border-t border-border">
+    <div className="mx-auto max-w-6xl px-6 py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+      <span className="text-sm text-muted-foreground">© {new Date().getFullYear()} Intrinsiq</span>
+      <span className="text-xs text-muted-foreground">Data sourced from SEC EDGAR. Not investment advice.</span>
+    </div>
+  </footer>
 );
 
 const HomePage = () => {
@@ -506,10 +425,10 @@ const HomePage = () => {
   const goLogin = () => navigate('/login');
 
   return (
-    <div className={classes.root}>
+    <div className="min-h-screen bg-background text-foreground">
       <Hero onGetStarted={goLogin} />
-      <DemoDashboard onGetStarted={goLogin} />
-      <FeatureStrip />
+      <DemoGrid />
+      <TheToolboxStrip />
       <WorkflowStrip />
       <FinalCTA onGetStarted={goLogin} />
       <Footer />

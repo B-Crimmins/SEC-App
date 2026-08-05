@@ -6,7 +6,7 @@ from database import get_db
 from auth.auth import get_current_active_user
 from services.sec_service import SECService
 from services.user_service import UserService
-from models.user import User, UserTier
+from models.user import User
 from models.financial_report import FinancialReport
 from schemas.financial_report import FinancialReportResponse, FinancialDataRequest
 from utils.csv_export import export_financial_report_to_excel_format

@@ -16,3 +16,7 @@ email-validator==2.3.0
 python-multipart==0.0.20
 edgartools
 alembic==1.14.0
+yfinance>=1.4.1
+curl_cffi>=0.15
+numpy==2.2.4
+scipy>=1.15.0

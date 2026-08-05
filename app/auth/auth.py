@@ -47,8 +47,7 @@ def verify_token(token: str) -> Optional[TokenData]:
         email = payload.get("sub")
         if email is None:
             return None
-        token_data = TokenData(email=email)
-        return token_data
+        return TokenData(email=email)
     except JWTError:
         return None
 
@@ -76,4 +75,21 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
     """Get the current active user"""
     if current_user.is_active is False:
         raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user 
+    return current_user
+
+
+async def require_paid_user(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """Require an active (or past_due) row in the subscriptions table."""
+    # Local import avoids circular dependency with UserService -> auth password helpers.
+    from services.user_service import UserService
+
+    user_service = UserService(db)
+    if not user_service.user_has_pro_access(int(current_user.id)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This feature requires a Pro subscription. Please upgrade to continue.",
+        )
+    return current_user

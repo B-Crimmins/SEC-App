@@ -50,7 +50,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
             "id": user.id,
             "email": user.email,
             "username": user.username,
-            "tier": user.tier.value,
+            "is_pro": user_service.user_has_pro_access(int(user.id)),
             "created_at": user.created_at.isoformat() if user.created_at is not None else None
         }
     }
