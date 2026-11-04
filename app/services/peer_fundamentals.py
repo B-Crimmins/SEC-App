@@ -107,12 +107,24 @@ def _safe_float(v) -> Optional[float]:
     return f
 
 
-def _fetch_one(symbol: str) -> Optional[PeerFundamentals]:
+class YFinanceUnavailable(RuntimeError):
+    """Raised when the yfinance package is missing from the runtime env."""
+
+
+def _import_yfinance():
     try:
         import yfinance as yf
+        return yf
     except Exception as exc:
         logger.warning("yfinance not importable: %s", exc)
-        return None
+        raise YFinanceUnavailable(
+            "Relative Valuation requires the yfinance package, which is not "
+            "installed in this server environment. Run: pip install yfinance"
+        ) from exc
+
+
+def _fetch_one(symbol: str) -> Optional[PeerFundamentals]:
+    yf = _import_yfinance()
 
     try:
         t = yf.Ticker(symbol)

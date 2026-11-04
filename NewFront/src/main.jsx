@@ -7,6 +7,7 @@ import HomePage from '../Pages/Home/HomePage.jsx';
 import LoginPage from '../Pages/Login/LoginPage.jsx';
 import AppHome from '../Pages/AppHome/AppHome.jsx';
 import AccountPage from '../Pages/Account/AccountPage.jsx';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { TooltipProvider } from './components/ui/tooltip';
 
 const StripePage = lazy(() => import('../Pages/Stripe/StripePage.jsx'));
@@ -21,7 +22,14 @@ createRoot(document.getElementById('root')).render(
             <Route path="/">
               <Route index element={<HomePage />} />
               <Route path="login" element={<LoginPage />} />
-              <Route path="AppHome" element={<AppHome />} />
+              <Route
+                path="AppHome"
+                element={(
+                  <ProtectedRoute>
+                    <AppHome />
+                  </ProtectedRoute>
+                )}
+              />
               <Route path="Account" element={<AccountPage />} />
               <Route
                 path="Subscriptions"

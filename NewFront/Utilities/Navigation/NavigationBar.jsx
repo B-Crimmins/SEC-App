@@ -25,6 +25,10 @@ const NavigationBar = () => {
     setDrawerOpen(false);
     navigate('/login');
   };
+  const goSignUp = () => {
+    setDrawerOpen(false);
+    navigate('/login?mode=register');
+  };
   const goApp = () => {
     setDrawerOpen(false);
     navigate('/AppHome');
@@ -33,6 +37,8 @@ const NavigationBar = () => {
     setDrawerOpen(false);
     sessionStorage.removeItem('token');
     sessionStorage.removeItem('user');
+    sessionStorage.removeItem('iq:dcfResult:v1');
+    sessionStorage.removeItem('iq:livingModelDrivers:v1');
     setSignedIn(false);
     navigate('/');
   };
@@ -69,7 +75,7 @@ const NavigationBar = () => {
             ) : (
               <>
                 <Button variant="ghost" size="sm" onClick={goLogin}>Log in</Button>
-                <Button size="sm" onClick={goLogin}>Sign up</Button>
+                <Button size="sm" onClick={goSignUp}>Sign up</Button>
               </>
             )}
           </div>
@@ -93,7 +99,7 @@ const NavigationBar = () => {
                 ) : (
                   <>
                     <Button variant="outline" onClick={goLogin}>Log in</Button>
-                    <Button onClick={goLogin}>Sign up</Button>
+                    <Button onClick={goSignUp}>Sign up</Button>
                   </>
                 )}
               </div>

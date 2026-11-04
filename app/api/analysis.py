@@ -13,6 +13,7 @@ from services.common_size import calculate_common_size_multi_period
 from services.relative_valuation import RelativeValuationService
 from services import screener_cache
 from schemas.relative_valuation import RelativeValuationRequest
+from services.peer_fundamentals import YFinanceUnavailable
 from models.user import User
 from models.financial_report import FinancialReport
 from models.analysis import Analysis
@@ -1037,6 +1038,8 @@ async def generate_relative_valuation(
             override_peers=request.override_peers,
             dcf_per_share=request.dcf_per_share,
         )
+    except YFinanceUnavailable as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:

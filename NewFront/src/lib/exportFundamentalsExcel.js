@@ -1,10 +1,6 @@
 import ExcelJS from 'exceljs';
 import { readDcfResult } from './crossPortalStore';
 
-const NO_DATA_MESSAGE = 'No data available.';
-
-const NO_DATA_ROWS = [[NO_DATA_MESSAGE]];
-
 const FMT = {
   CURRENCY: '$#,##0',
   CURRENCY_DECIMAL: '$#,##0.00',
@@ -144,6 +140,77 @@ const FRONTEND_TABS = [
   { sheetName: 'DCF', key: 'dcf' },
   { sheetName: 'Diagram', key: 'diagram' },
 ];
+
+const FREE_EXPORT_TAB_NAMES = new Set([
+  'Balance Sheet',
+  'Income Statement',
+  'Cash Flow Statement',
+  'Ratio Analysis',
+  'Segments',
+  'Common Size',
+]);
+
+const PRO_EXPORT_TAB_NAMES = new Set([...FREE_EXPORT_TAB_NAMES, 'DCF']);
+
+/** Tab keys eligible for export for the current entitlement. Diagram is UI-only. */
+export function getVisibleExportTabKeys(isPro = false) {
+  const allowed = isPro ? PRO_EXPORT_TAB_NAMES : FREE_EXPORT_TAB_NAMES;
+  return FRONTEND_TABS.filter(({ sheetName }) => allowed.has(sheetName)).map(({ key }) => key);
+}
+
+const buildTabExportSpec = (key, {
+  tickers = [],
+  simpleTickerData,
+  ratioTable,
+  segmentsData,
+  commonSizeData,
+  primaryTicker,
+}) => {
+  if (key === 'balance_sheet') {
+    return buildStatementsTabSpec(simpleTickerData, 'balance_sheet', 'Balance Sheet');
+  }
+  if (key === 'income_statement') {
+    return buildStatementsTabSpec(simpleTickerData, 'income_statement', 'Income Statement');
+  }
+  if (key === 'cash_flow') {
+    return buildStatementsTabSpec(simpleTickerData, 'cash_flow', 'Cash Flow Statement');
+  }
+  if (key === 'ratio_analysis') {
+    return buildRatioAnalysisTabSpec(ratioTable, tickers);
+  }
+  if (key === 'segments') {
+    return buildSegmentsTabSpec(segmentsData);
+  }
+  if (key === 'common_size') {
+    return buildCommonSizeTabSpec(commonSizeData);
+  }
+  if (key === 'dcf') {
+    return buildDcfTabSpec(primaryTicker);
+  }
+  return null;
+};
+
+/** True when at least one visible tab has exportable rows after the latest search. */
+export function hasFundamentalsExportData({
+  isPro = false,
+  tickers = [],
+  simpleTickerData,
+  ratioTable,
+  segmentsData,
+  commonSizeData,
+} = {}) {
+  const primaryTicker = tickers.find((t) => t?.trim()) || '';
+  const ctx = {
+    tickers: tickers.filter((t) => t?.trim()),
+    simpleTickerData,
+    ratioTable,
+    segmentsData,
+    commonSizeData,
+    primaryTicker,
+  };
+
+  return getVisibleExportTabKeys(isPro).some((key) => Boolean(buildTabExportSpec(key, ctx)));
+};
 
 const DCF_VALUE_FORMAT = {
   'Per Share Value': FMT.CURRENCY_DECIMAL,
@@ -582,6 +649,7 @@ const triggerDownload = async (workbook, filename) => {
 export async function downloadFundamentalsExcel({
   tickers = [],
   reportType = '',
+  isPro = false,
   simpleTickerData,
   ratioTable,
   segmentsData,
@@ -590,32 +658,27 @@ export async function downloadFundamentalsExcel({
   const workbook = new ExcelJS.Workbook();
   const usedNames = new Set();
   const primaryTicker = tickers.find((t) => t?.trim()) || '';
+  const ctx = {
+    tickers: tickers.filter((t) => t?.trim()),
+    simpleTickerData,
+    ratioTable,
+    segmentsData,
+    commonSizeData,
+    primaryTicker,
+  };
 
-  FRONTEND_TABS.forEach(({ sheetName, key }) => {
-    let spec = buildSheetSpec(NO_DATA_ROWS);
+  const visibleKeys = getVisibleExportTabKeys(isPro);
+  const tabsToExport = FRONTEND_TABS.filter(({ key }) => visibleKeys.includes(key));
 
-    if (key === 'balance_sheet') {
-      spec = buildStatementsTabSpec(simpleTickerData, 'balance_sheet', 'Balance Sheet') || spec;
-    } else if (key === 'income_statement') {
-      spec = buildStatementsTabSpec(simpleTickerData, 'income_statement', 'Income Statement') || spec;
-    } else if (key === 'cash_flow') {
-      spec = buildStatementsTabSpec(simpleTickerData, 'cash_flow', 'Cash Flow Statement') || spec;
-    } else if (key === 'ratio_analysis') {
-      spec = buildRatioAnalysisTabSpec(ratioTable, tickers) || spec;
-    } else if (key === 'segments') {
-      spec = buildSegmentsTabSpec(segmentsData) || spec;
-    } else if (key === 'common_size') {
-      spec = buildCommonSizeTabSpec(commonSizeData) || spec;
-    } else if (key === 'dcf') {
-      spec = buildDcfTabSpec(primaryTicker) || spec;
-    } else if (key === 'diagram') {
-      spec = buildSheetSpec([
-        [NO_DATA_MESSAGE, 'The linkage diagram is a visual view and is not exported as tabular data.'],
-      ]);
-    }
-
+  tabsToExport.forEach(({ sheetName, key }) => {
+    const spec = buildTabExportSpec(key, ctx);
+    if (!spec) return;
     appendSheet(workbook, usedNames, sheetName, spec);
   });
+
+  if (workbook.worksheets.length === 0) {
+    throw new Error('No exportable data available.');
+  }
 
   const tickerSlug = tickers.filter((t) => t?.trim()).join('_') || 'fundamentals';
   const reportSlug = reportType ? `_${reportType.replace(/\s+/g, '')}` : '';

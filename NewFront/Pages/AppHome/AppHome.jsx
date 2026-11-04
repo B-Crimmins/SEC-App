@@ -97,7 +97,13 @@ const AppHome = () => {
     });
   };
 
-  const handleLogout = () => navigate('/');
+  const handleLogout = () => {
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
+    sessionStorage.removeItem('iq:dcfResult:v1');
+    sessionStorage.removeItem('iq:livingModelDrivers:v1');
+    navigate('/');
+  };
 
   const fundamentalsLabel = isPro
     ? 'Fundamentals — statements, ratios, DCF, diagram'
@@ -208,44 +214,49 @@ const AppHome = () => {
         <FeedbackModal opened={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
         {/* Keep portals mounted when Pro and toggle visibility.
-            Unmounting on tab switch wipes each portal's useState (tickers,
+            Unmounting on rail switch wipes each portal's useState (tickers,
             fetched data, slider positions). We CAN'T use `display:none`
             for inactive panels — Radix Slider measures its track via
             getBoundingClientRect at mount, which returns 0×0 inside a
             display:none parent. The slider would then map every pointer
             position to a degenerate value and drag would silently fail.
-            Solution: stack portals absolutely, toggle visibility +
-            pointer-events. Layout still computes (sliders measure right),
-            only the active one is visible and interactive. */}
-        <main className="flex-1 overflow-hidden relative">
+            Do NOT use `visibility:hidden` alone either — React Flow (and
+            other GPU-composited layers) can keep painting through it when
+            a sibling portal has a transparent background. Use opacity +
+            z-index + opaque bg so inactive portals are fully covered and
+            never bleed into the active one. Layout still computes. */}
+        <main className="flex-1 overflow-hidden relative bg-background">
           <div
-            className={`absolute inset-0 ${
+            className={cn(
+              'absolute inset-0 bg-background',
               activePortal === 'fundamentals'
-                ? 'visible'
-                : 'invisible pointer-events-none'
-            }`}
+                ? 'z-10 opacity-100'
+                : 'z-0 opacity-0 pointer-events-none'
+            )}
             aria-hidden={activePortal !== 'fundamentals'}
           >
-            <FundamentalsPortal isPro={isPro} />
+            <FundamentalsPortal isPro={isPro} isActive={activePortal === 'fundamentals'} />
           </div>
           {isPro && (
             <>
               <div
-                className={`absolute inset-0 ${
+                className={cn(
+                  'absolute inset-0 bg-background',
                   activePortal === 'relativeValuation'
-                    ? 'visible'
-                    : 'invisible pointer-events-none'
-                }`}
+                    ? 'z-10 opacity-100'
+                    : 'z-0 opacity-0 pointer-events-none'
+                )}
                 aria-hidden={activePortal !== 'relativeValuation'}
               >
                 <RelativeValuationPortal />
               </div>
               <div
-                className={`absolute inset-0 ${
+                className={cn(
+                  'absolute inset-0 bg-background',
                   activePortal === 'livingModel'
-                    ? 'visible'
-                    : 'invisible pointer-events-none'
-                }`}
+                    ? 'z-10 opacity-100'
+                    : 'z-0 opacity-0 pointer-events-none'
+                )}
                 aria-hidden={activePortal !== 'livingModel'}
               >
                 <LivingModelPortal />

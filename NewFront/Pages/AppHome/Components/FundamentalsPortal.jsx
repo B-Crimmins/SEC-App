@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { IconDownload } from '@tabler/icons-react';
 import axios from 'axios';
 import globalConfig from '../../../global/globalConfig.json';
@@ -12,7 +12,10 @@ import { UnitsContext } from '../../../Utilities/UnitsContext';
 import { Button } from '../../../src/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../../src/components/ui/tabs';
 import PortalSearchBar from '../../../src/components/PortalSearchBar';
-import { downloadFundamentalsExcel } from '../../../src/lib/exportFundamentalsExcel';
+import {
+  downloadFundamentalsExcel,
+  hasFundamentalsExportData,
+} from '../../../src/lib/exportFundamentalsExcel';
 
 const FREE_TABS = ['Balance Sheet', 'Income Statement', 'Cash Flow Statement', 'Ratio Analysis', 'Segments', 'Common Size'];
 const PRO_TABS = ['DCF', 'Diagram'];
@@ -21,7 +24,7 @@ const STATEMENT_TABS = [...FREE_TABS, ...PRO_TABS];
 // Authenticated app's main analysis surface. Owns its own search state +
 // fetch queue so toggling to Living Model and back doesn't disturb the
 // loaded ratios / statements / DCF.
-const FundamentalsPortal = ({ isPro = false }) => {
+const FundamentalsPortal = ({ isPro = false, isActive = true }) => {
   const [tickers, setTickers] = useState([]);
   const [reportType, setReportType] = useState('10-K');
   const [years, setYears] = useState([]); // flat array of period strings: ['2024'] or ['Q1 2024']
@@ -32,8 +35,34 @@ const FundamentalsPortal = ({ isPro = false }) => {
   const [commonSizeData, setCommonSizeData] = useState(null);
   const [activeTab, setActiveTab] = useState('Balance Sheet');
   const [loading, setLoading] = useState(false);
+  const [lastSearchKey, setLastSearchKey] = useState(null);
 
   const visibleTabs = isPro ? STATEMENT_TABS : FREE_TABS;
+
+  const currentSearchKey = useMemo(() => {
+    const tickerList = tickers.filter((t) => t?.trim());
+    if (tickerList.length === 0 || years.length === 0 || !reportType) return null;
+    return `${tickerList.join(',')}|${years.join(',')}|${reportType}`;
+  }, [tickers, years, reportType]);
+
+  const exportPayload = useMemo(
+    () => ({
+      isPro,
+      tickers: tickers.filter((t) => t?.trim()),
+      simpleTickerData,
+      segmentsData,
+      commonSizeData,
+    }),
+    [isPro, tickers, simpleTickerData, segmentsData, commonSizeData]
+  );
+
+  const canDownloadExcel = useMemo(
+    () =>
+      lastSearchKey !== null
+      && lastSearchKey === currentSearchKey
+      && hasFundamentalsExportData(exportPayload),
+    [lastSearchKey, currentSearchKey, exportPayload]
+  );
 
   useEffect(() => {
     if (!isPro && PRO_TABS.includes(activeTab)) {
@@ -57,6 +86,7 @@ const FundamentalsPortal = ({ isPro = false }) => {
   const handleSearchClick = (yearList) => {
     const inputs = validateInputs(yearList);
     if (!inputs) return;
+    setLastSearchKey(`${inputs.tickerList.join(',')}|${inputs.yearList.join(',')}|${reportType}`);
     setLoading(true);
     const calls = [
       getSimpleTicker(inputs),
@@ -108,12 +138,10 @@ const FundamentalsPortal = ({ isPro = false }) => {
       .then((r) => setSimpleTickerData(r.data));
 
   const handleDownloadExcel = () => {
+    if (!canDownloadExcel) return;
     downloadFundamentalsExcel({
-      tickers: tickers.filter((t) => t?.trim()),
+      ...exportPayload,
       reportType,
-      simpleTickerData,
-      segmentsData,
-      commonSizeData,
     }).catch(() => {
       alert('Failed to generate Excel file.');
     });
@@ -140,7 +168,17 @@ const FundamentalsPortal = ({ isPro = false }) => {
                   <TabsTrigger key={t} value={t}>{t}</TabsTrigger>
                 ))}
               </TabsList>
-              <Button variant="outline" size="sm" onClick={handleDownloadExcel}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadExcel}
+                disabled={!canDownloadExcel || loading}
+                title={
+                  canDownloadExcel
+                    ? 'Download visible tabs with data to Excel'
+                    : 'Run a search with results before downloading'
+                }
+              >
                 <IconDownload size={16} />
                 Download Excel
               </Button>
@@ -178,7 +216,12 @@ const FundamentalsPortal = ({ isPro = false }) => {
                   />
                 </TabsContent>
                 <TabsContent value="Diagram">
-                  <LinkageDiagram data={simpleTickerData} ticker={tickers[0]} />
+                  {/* Unmount React Flow when this portal is not the active rail
+                      destination — its canvas can otherwise keep painting over
+                      sibling portals even when the parent is opacity-hidden. */}
+                  {isActive ? (
+                    <LinkageDiagram data={simpleTickerData} ticker={tickers[0]} />
+                  ) : null}
                 </TabsContent>
               </>
             )}

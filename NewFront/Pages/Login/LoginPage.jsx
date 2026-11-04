@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { IconSearch } from '@tabler/icons-react';
 import globalConfig from '../../global/globalConfig.json';
 import { Button } from '../../src/components/ui/button';
@@ -11,7 +11,10 @@ import { Checkbox } from '../../src/components/ui/checkbox';
 import { Separator } from '../../src/components/ui/separator';
 
 function LoginPage() {
-  const [isRegister, setIsRegister] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [isRegister, setIsRegister] = useState(
+    () => searchParams.get('mode') === 'register'
+  );
   const [accepted, setAccepted] = useState(false);
   const [loginForm, setLoginForm] = useState({
     username: '',
@@ -19,6 +22,17 @@ function LoginPage() {
     confirmPassword: '',
   });
   const navigate = useNavigate();
+
+  useEffect(() => {
+    setIsRegister(searchParams.get('mode') === 'register');
+  }, [searchParams]);
+
+  const toggleMode = () => {
+    const next = !isRegister;
+    setIsRegister(next);
+    if (next) setSearchParams({ mode: 'register' }, { replace: true });
+    else setSearchParams({}, { replace: true });
+  };
 
   const storeSession = (data) => {
     sessionStorage.setItem('token', data.access_token);
@@ -74,13 +88,17 @@ function LoginPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <IconSearch size={22} strokeWidth={2.2} className="text-accent" />
-            <h2 className="text-lg font-semibold">Login to Intrinsiq</h2>
+            <h2 className="text-lg font-semibold">
+              {isRegister ? 'Create your Intrinsiq account' : 'Login to Intrinsiq'}
+            </h2>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
             <Separator className="flex-1" />
-            <span className="text-xs text-muted-foreground">Please login or register below</span>
+            <span className="text-xs text-muted-foreground">
+              {isRegister ? 'Register below to get started' : 'Please login or register below'}
+            </span>
             <Separator className="flex-1" />
           </div>
 
@@ -142,7 +160,7 @@ function LoginPage() {
               <button
                 type="button"
                 className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
-                onClick={() => setIsRegister(!isRegister)}
+                onClick={toggleMode}
               >
                 {isRegister ? 'I have an account' : 'Register'}
               </button>
